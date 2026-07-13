@@ -1,0 +1,283 @@
+// Prisma schema — سامانه پایش پیشرفت پروژه‌های استراتژیک
+// Datasource: PostgreSQL. تمام شناسه‌های اصلی از نوع UUID هستند.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  MANAGER_VIEWER
+  PROJECT_EDITOR
+}
+
+enum ActivityStatus {
+  GOOD
+  AVERAGE
+  WEAK
+  UNKNOWN
+}
+
+enum Probability {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum DecisionStatus {
+  NEW
+  IN_PROGRESS
+  WAITING_FOR_REPORT
+  DONE
+  OTHER
+}
+
+enum ImportStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id                 String    @id @default(uuid()) @db.Uuid
+  username           String
+  normalizedUsername String    @unique
+  fullName           String
+  passwordHash       String
+  role               UserRole  @default(MANAGER_VIEWER)
+  isActive           Boolean   @default(true)
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  passwordChangedAt  DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  refreshTokens RefreshToken[]
+  imports       ImportLog[]    @relation("ImportedBy")
+  auditLogs     AuditLog[]     @relation("AuditUser")
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+model RefreshToken {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @db.Uuid
+  tokenHash          String    @unique
+  expiresAt          DateTime
+  revokedAt          DateTime?
+  replacedByTokenId  String?   @db.Uuid
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Project {
+  id                String   @id @default(uuid()) @db.Uuid
+  titleFa           String
+  titleEn           String?
+  projectCode       String?
+  projectManager    String
+  projectType       String
+  budgetBillionRial Float    @default(0)
+  description       String   @default("")
+  startDate         DateTime @db.Date
+  plannedEndDate    DateTime @db.Date
+  reportDate        DateTime @db.Date
+  logoUrl           String?
+  isActive          Boolean  @default(true)
+  displayOrder      Int      @default(0)
+  version           Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  indicators       ProjectIndicator[]
+  monthlyProgress  MonthlyProgress[]
+  activities       Activity[]
+  risks            Risk[]
+  decisions        Decision[]
+  imports          ImportLog[]
+  auditLogs        AuditLog[]
+
+  @@index([isActive])
+  @@index([displayOrder])
+  @@map("projects")
+}
+
+model ProjectIndicator {
+  id           String   @id @default(uuid()) @db.Uuid
+  projectId    String   @db.Uuid
+  title        String
+  plannedValue Float    @default(0)
+  actualValue  Float    @default(0)
+  unit         String?
+  isPrimary    Boolean  @default(false)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, isPrimary])
+  @@map("project_indicators")
+}
+
+model MonthlyProgress {
+  id             String   @id @default(uuid()) @db.Uuid
+  projectId      String   @db.Uuid
+  jalaliYear     Int
+  jalaliMonth    Int
+  monthLabel     String
+  sortOrder      Int      @default(0)
+  date           DateTime @db.Date
+  plannedPercent Float    @default(0)
+  actualPercent  Float?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, jalaliYear, jalaliMonth])
+  @@index([projectId])
+  @@index([projectId, sortOrder])
+  @@map("monthly_progress")
+}
+
+model Activity {
+  id             String          @id @default(uuid()) @db.Uuid
+  projectId      String          @db.Uuid
+  rowNumber      Int
+  title          String
+  weightPercent  Float           @default(0)
+  startDate      DateTime        @db.Date
+  endDate        DateTime        @db.Date
+  plannedPercent Float           @default(0)
+  actualPercent  Float           @default(0)
+  statusOverride ActivityStatus?
+  notes          String?
+  displayOrder   Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, displayOrder])
+  @@index([deletedAt])
+  @@map("activities")
+}
+
+model Risk {
+  id               String      @id @default(uuid()) @db.Uuid
+  projectId        String      @db.Uuid
+  rowNumber        Int
+  title            String
+  probability      Probability @default(MEDIUM)
+  riskLevel        RiskLevel   @default(MEDIUM)
+  mitigationAction String      @default("")
+  owner            String      @default("")
+  dueDate          DateTime?   @db.Date
+  status           String?
+  displayOrder     Int         @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, displayOrder])
+  @@index([deletedAt])
+  @@map("risks")
+}
+
+model Decision {
+  id           String         @id @default(uuid()) @db.Uuid
+  projectId    String         @db.Uuid
+  rowNumber    Int
+  subject      String?
+  description  String?
+  owner        String?
+  dueDate      DateTime?      @db.Date
+  status       DecisionStatus @default(NEW)
+  displayOrder Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([projectId, displayOrder])
+  @@index([deletedAt])
+  @@map("decisions")
+}
+
+model ImportLog {
+  id               String       @id @default(uuid()) @db.Uuid
+  projectId        String?      @db.Uuid
+  originalFilename String
+  storedFilename   String?
+  fileHash         String
+  status           ImportStatus @default(PENDING)
+  importedByUserId String?      @db.Uuid
+  totalRows        Int          @default(0)
+  successRows      Int          @default(0)
+  failedRows       Int          @default(0)
+  validationErrors Json?
+  createdAt        DateTime     @default(now())
+  completedAt      DateTime?
+
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  importedBy   User?    @relation("ImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([fileHash])
+  @@index([createdAt])
+  @@map("import_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  projectId  String?  @db.Uuid
+  entityType String
+  entityId   String?
+  action     String
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user    User?    @relation("AuditUser", fields: [userId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([entityType])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
