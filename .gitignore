@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Prisma
+apps/api/prisma/*.db
+apps/api/prisma/migrations/**/migration_lock.toml.bak
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test / coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+apps/web/playwright/.auth/
+
+# Uploads (user files must not be committed)
+uploads/
+apps/api/uploads/
+
+# Database backups
+backups/
+*.dump
+*.sql.gz
+
+# Artifacts (generated screenshots kept out of VCS except placeholder)
+artifacts/*
+!artifacts/.gitkeep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

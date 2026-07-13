@@ -1,0 +1,29 @@
+{
+  "name": "project-monitoring-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "سامانه پایش پیشرفت پروژه‌های استراتژیک — Strategic Project Monitoring Platform",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter=./packages/* build && pnpm --filter=@ppm/api build && pnpm --filter=@ppm/web build",
+    "dev": "pnpm --parallel --filter=@ppm/api --filter=@ppm/web dev",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter=@ppm/web test:e2e",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "db:generate": "pnpm --filter=@ppm/api prisma:generate",
+    "db:migrate": "pnpm --filter=@ppm/api prisma:migrate",
+    "db:deploy": "pnpm --filter=@ppm/api prisma:deploy",
+    "db:seed": "pnpm --filter=@ppm/api prisma:seed"
+  },
+  "devDependencies": {
+    "prettier": "3.3.3",
+    "typescript": "5.6.3"
+  }
+}
