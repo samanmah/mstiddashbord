@@ -1,0 +1,73 @@
+# ==========================================================================
+# Docker Compose — محیط توسعه
+# اجرا: docker compose up -d
+# ==========================================================================
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ppm_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_pass_123}
+      POSTGRES_DB: ${POSTGRES_DB:-ppm_db}
+      TZ: Asia/Tehran
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-ppm_user} -d ${POSTGRES_DB:-ppm_db}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Tehran
+      API_PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ppm_user}:${POSTGRES_PASSWORD:-dev_pass_123}@postgres:5432/${POSTGRES_DB:-ppm_db}?schema=public
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_me_min_32_chars_0000}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_me_min_32_chars_00}
+      COOKIE_SECRET: ${COOKIE_SECRET:-dev_cookie_secret_change_me_min_32_chars_00}
+      COOKIE_SECURE: 'false'
+      COOKIE_SAMESITE: lax
+      SEED_EDITOR_USERNAME: ${SEED_EDITOR_USERNAME:-editor}
+      SEED_EDITOR_PASSWORD: ${SEED_EDITOR_PASSWORD:-Editor@Passw0rd!}
+      SEED_VIEWER_USERNAME: ${SEED_VIEWER_USERNAME:-viewer}
+      SEED_VIEWER_PASSWORD: ${SEED_VIEWER_PASSWORD:-Viewer@Passw0rd!}
+    ports:
+      - '${API_PORT:-4000}:4000'
+    volumes:
+      - api_uploads:/app/uploads
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: /api/v1
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Tehran
+      PORT: 3000
+      # در توسعه، SSR مستقیم به سرویس api وصل می‌شود.
+      API_UPSTREAM_URL: http://api:4000
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+
+volumes:
+  postgres_data:
+  api_uploads:

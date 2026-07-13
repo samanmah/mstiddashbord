@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  build-test:
+    name: Lint · Typecheck · Test · Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: ppm_user
+          POSTGRES_PASSWORD: ppm_pass
+          POSTGRES_DB: ppm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ppm_user -d ppm_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://ppm_user:ppm_pass@localhost:5432/ppm_test?schema=public
+      JWT_ACCESS_SECRET: ci_access_secret_min_32_chars_0000000000
+      JWT_REFRESH_SECRET: ci_refresh_secret_min_32_chars_000000000
+      COOKIE_SECRET: ci_cookie_secret_min_32_chars_0000000000
+      SEED_EDITOR_USERNAME: editor
+      SEED_EDITOR_PASSWORD: Editor@Passw0rd!
+      SEED_VIEWER_USERNAME: viewer
+      SEED_VIEWER_PASSWORD: Viewer@Passw0rd!
+      TZ: Asia/Tehran
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build contracts package
+        run: pnpm --filter=@ppm/contracts build
+
+      - name: Generate Prisma client
+        run: pnpm --filter=@ppm/api prisma:generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Run database migrations
+        run: pnpm --filter=@ppm/api prisma:deploy
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Integration tests
+        run: pnpm --filter=@ppm/api test:integration
+
+      - name: Build applications
+        run: pnpm build
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            apps/api/coverage
+            apps/web/coverage
+            apps/web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
