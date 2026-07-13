@@ -1,0 +1,175 @@
+@import '@fontsource/vazirmatn/400.css';
+@import '@fontsource/vazirmatn/500.css';
+@import '@fontsource/vazirmatn/700.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-navy-900: #17345f;
+  --color-navy-800: #203f70;
+  --color-navy-700: #274a7d;
+  --color-orange: #f57c00;
+  --color-green: #20a55a;
+  --color-red: #e53935;
+  --color-yellow: #ffd400;
+  --color-blue: #2d9cdb;
+  --color-purple: #8e5bd9;
+  --color-page-bg: #edf2f8;
+  --color-card-bg: #ffffff;
+  --color-border: #d7e0ea;
+  --color-text: #172b4d;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-page text-ink font-sans antialiased;
+    font-feature-settings: 'ss01';
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #c3cede transparent;
+  }
+
+  *::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #c3cede;
+    border-radius: 8px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-blue);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-borderx bg-card shadow-card;
+  }
+
+  .card-header {
+    @apply flex items-center justify-between rounded-t-card px-4 py-2.5 text-sm font-bold text-white;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-navy-800 text-white hover:bg-navy-700;
+  }
+
+  .btn-secondary {
+    @apply border border-borderx bg-white text-ink hover:bg-page;
+  }
+
+  .btn-danger {
+    @apply bg-brand-red text-white hover:brightness-95;
+  }
+
+  .btn-ghost {
+    @apply text-ink hover:bg-page;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-borderx bg-white px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-grayx-dot focus:border-brand-blue focus:ring-1 focus:ring-brand-blue;
+  }
+
+  .input-error {
+    @apply border-brand-red focus:border-brand-red focus:ring-brand-red;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-ink;
+  }
+
+  .field-error {
+    @apply mt-1 text-xs text-brand-red;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .table-wrap {
+    @apply w-full overflow-x-auto;
+  }
+
+  .data-table {
+    @apply w-full border-collapse text-sm;
+  }
+
+  .data-table thead th {
+    @apply bg-navy-800 px-3 py-2 text-center font-medium text-white;
+  }
+
+  .data-table tbody td {
+    @apply border-b border-borderx px-3 py-2 text-center;
+  }
+
+  .data-table tbody tr:nth-child(even) {
+    @apply bg-page/40;
+  }
+}
+
+/* Recharts tooltip RTL */
+.recharts-default-tooltip {
+  direction: rtl;
+  border-radius: 8px !important;
+  border: 1px solid var(--color-border) !important;
+  font-family: inherit;
+}
+
+/* ===================== Print / PDF ===================== */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+
+  .print-block {
+    display: block !important;
+  }
+
+  .card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #c9d4e2 !important;
+  }
+
+  .print-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  .recharts-wrapper,
+  .recharts-surface {
+    overflow: visible !important;
+  }
+}
