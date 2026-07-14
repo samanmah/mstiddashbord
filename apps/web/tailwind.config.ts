@@ -5,11 +5,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // مقیاس سرمه‌ای عمیق برای Header و سطوح تیره
         navy: {
-          900: '#17345F',
-          800: '#203F70',
-          700: '#274A7D',
+          950: '#0B1F3A',
+          900: '#112F57',
+          800: '#173B6C',
+          700: '#1E4E8C',
         },
+        // رنگ‌های وضعیت (Status) — هماهنگ با متادیتای Backend، تغییر نکنند
         brand: {
           orange: '#F57C00',
           green: '#20A55A',
@@ -18,24 +21,40 @@ const config: Config = {
           blue: '#2D9CDB',
           purple: '#8E5BD9',
         },
-        grayx: {
-          header: '#7D8995',
-          dot: '#9AA6B2',
+        // رنگ‌های Accent مدرن برای هویت بصری داشبورد (تحلیلی/تزئینی)
+        accent: {
+          blue: '#2563EB',
+          sky: '#0EA5E9',
+          cyan: '#06B6D4',
+          emerald: '#10B981',
+          green: '#16A66A',
+          amber: '#F59E0B',
+          orange: '#F97316',
+          red: '#EF4444',
+          rose: '#E5484D',
+          violet: '#7C5CFC',
+          purple: '#8B5CF6',
+          indigo: '#4F46E5',
         },
-        page: '#EDF2F8',
+        grayx: {
+          header: '#64748B',
+          dot: '#94A3B8',
+        },
+        page: '#F3F6FB',
+        surface: '#F8FAFC',
         card: '#FFFFFF',
-        borderx: '#D7E0EA',
-        ink: '#172B4D',
+        borderx: '#DCE4EF',
+        ink: '#17233C',
       },
       fontFamily: {
         sans: ['Vazirmatn', 'Tahoma', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
-        card: '12px',
+        card: '18px',
       },
       boxShadow: {
-        card: '0 1px 3px rgba(23, 43, 77, 0.06), 0 1px 2px rgba(23, 43, 77, 0.04)',
-        cardhover: '0 4px 12px rgba(23, 43, 77, 0.10)',
+        card: '0 8px 30px rgba(15, 35, 65, 0.07)',
+        cardhover: '0 12px 34px rgba(15, 35, 65, 0.12)',
       },
       keyframes: {
         'fade-in': {

@@ -18,6 +18,9 @@ export interface Props {
   data: MonthlyProgressDto[];
 }
 
+const PLANNED_COLOR = '#2563EB';
+const ACTUAL_COLOR = '#10B981';
+
 interface Point {
   label: string;
   planned: number;
@@ -41,13 +44,13 @@ export function MonthlyLineChart({ data }: Props): React.JSX.Element {
       <div className="mb-2 flex items-center justify-center gap-4 text-xs">
         <LegendToggle
           active={showPlanned}
-          color="#2D9CDB"
+          color={PLANNED_COLOR}
           label="برنامه"
           onClick={() => setShowPlanned((v) => !v)}
         />
         <LegendToggle
           active={showActual}
-          color="#17345F"
+          color={ACTUAL_COLOR}
           label="واقعی"
           onClick={() => setShowActual((v) => !v)}
         />
@@ -55,10 +58,12 @@ export function MonthlyLineChart({ data }: Props): React.JSX.Element {
       <div className="h-[240px] w-full" dir="ltr">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={points} margin={{ top: 16, right: 12, left: 4, bottom: 28 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#E7EDF5" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#EEF3FA" vertical={false} />
             <XAxis
               dataKey="label"
-              tick={{ fontSize: 10, fill: '#7D8995', fontFamily: 'inherit' }}
+              tick={{ fontSize: 10, fill: '#64748B', fontFamily: 'inherit' }}
+              tickLine={false}
+              axisLine={{ stroke: '#DCE4EF' }}
               angle={-40}
               textAnchor="end"
               interval={0}
@@ -67,7 +72,9 @@ export function MonthlyLineChart({ data }: Props): React.JSX.Element {
             <YAxis
               domain={[0, 100]}
               tickFormatter={(v) => toPersianDigits(String(v))}
-              tick={{ fontSize: 11, fill: '#7D8995', fontFamily: 'inherit' }}
+              tick={{ fontSize: 11, fill: '#64748B', fontFamily: 'inherit' }}
+              tickLine={false}
+              axisLine={false}
               width={34}
             />
             <Tooltip<number, string>
@@ -75,6 +82,7 @@ export function MonthlyLineChart({ data }: Props): React.JSX.Element {
                 typeof value === 'number' ? faPercent(value) : '—',
                 name === 'planned' ? 'برنامه' : 'واقعی',
               ]}
+              cursor={{ stroke: '#94A3B8', strokeDasharray: '4 4' }}
               labelStyle={{ fontFamily: 'inherit' }}
               contentStyle={{ fontFamily: 'inherit', fontSize: 12 }}
             />
@@ -83,9 +91,10 @@ export function MonthlyLineChart({ data }: Props): React.JSX.Element {
                 type="monotone"
                 dataKey="planned"
                 name="planned"
-                stroke="#2D9CDB"
-                strokeWidth={2}
-                dot={{ r: 3 }}
+                stroke={PLANNED_COLOR}
+                strokeWidth={2.5}
+                dot={{ r: 3, strokeWidth: 0, fill: PLANNED_COLOR }}
+                activeDot={{ r: 5 }}
                 isAnimationActive={false}
               />
             ) : null}
@@ -94,9 +103,10 @@ export function MonthlyLineChart({ data }: Props): React.JSX.Element {
                 type="monotone"
                 dataKey="actual"
                 name="actual"
-                stroke="#17345F"
-                strokeWidth={2.5}
-                dot={{ r: 3 }}
+                stroke={ACTUAL_COLOR}
+                strokeWidth={3}
+                dot={{ r: 3, strokeWidth: 0, fill: ACTUAL_COLOR }}
+                activeDot={{ r: 5 }}
                 connectNulls={false}
                 isAnimationActive={false}
               />

@@ -96,25 +96,27 @@ export function ActivityTimeline({ activities, reportDateIso }: Props): React.JS
           ))}
         </div>
 
-        <div className="relative space-y-2">
+        <div className="relative space-y-2.5">
           {/* خط تاریخ گزارش */}
           {model.reportPos !== null ? (
             <div
-              className="pointer-events-none absolute top-0 bottom-0 z-10 border-l-2 border-dashed border-brand-red"
+              className="pointer-events-none absolute top-0 bottom-0 z-10 border-l-2 border-dashed border-accent-red"
               style={{ left: `${model.reportPos}%` }}
               title="تاریخ گزارش"
             >
-              <span className="absolute -top-0 right-1 text-[9px] text-brand-red">گزارش</span>
+              <span className="absolute -top-0 right-1 rounded bg-accent-red px-1 text-[9px] font-bold text-white">
+                گزارش
+              </span>
             </div>
           ) : null}
 
           {model.items.map(({ activity, left, width }) => {
             const meta = ACTIVITY_STATUS_META[activity.effectiveStatus];
             return (
-              <div key={activity.id} className="relative h-7" dir="ltr">
-                <div className="absolute inset-0 rounded bg-page" />
+              <div key={activity.id} className="relative h-8" dir="ltr">
+                <div className="absolute inset-0 rounded-lg bg-surface ring-1 ring-inset ring-borderx/70" />
                 <div
-                  className="absolute top-0 flex h-7 items-center rounded px-2 text-[10px] font-medium text-white"
+                  className="absolute top-0 flex h-8 items-center rounded-lg px-2 text-[10px] font-semibold text-white shadow-sm"
                   style={{ left: `${left}%`, width: `${width}%`, backgroundColor: meta.color }}
                   title={activity.title}
                 >

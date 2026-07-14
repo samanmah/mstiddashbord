@@ -1,10 +1,23 @@
 import type { ProjectDto } from '@ppm/contracts';
+import { FolderKanban } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { isoToJalaliFa, orDash } from '@/lib/utils';
 
 export function ProjectInfoCard({ project }: { project: ProjectDto }): React.JSX.Element {
   return (
-    <Card title="اطلاعات پروژه" headerTone="orange" bodyClassName="space-y-2.5 text-sm">
+    <Card
+      title={
+        <span className="flex items-center gap-2">
+          <span className="section-icon bg-accent-blue/15 text-accent-blue">
+            <FolderKanban className="h-[18px] w-[18px]" aria-hidden />
+          </span>
+          اطلاعات پروژه
+        </span>
+      }
+      headerTone="navy"
+      className="border-t-2 border-t-accent-blue"
+      bodyClassName="space-y-2.5 text-sm"
+    >
       <InfoRow label="شرح پروژه" value={orDash(project.description)} multiline />
       <InfoRow label="نوع پروژه" value={orDash(project.projectType)} />
       <InfoRow label="تاریخ شروع" value={isoToJalaliFa(project.startDate)} />
@@ -32,7 +45,7 @@ function InfoRow({
       }
     >
       <span className="shrink-0 text-grayx-header">{label}:</span>
-      <span className={multiline ? 'leading-6 text-ink' : 'text-left font-medium text-ink'}>
+      <span className={multiline ? 'leading-6 text-ink' : 'text-left font-semibold text-ink'}>
         {value}
       </span>
     </div>
