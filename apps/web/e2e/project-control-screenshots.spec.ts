@@ -98,7 +98,7 @@ async function captureGanttEditor(page: Page, projectId: string): Promise<void> 
   const rows = page.getByTestId('gantt-task-row');
   await expect(rows.first()).toBeVisible();
   expect(await rows.count(), 'حداقل یک ردیف فعالیت باید وجود داشته باشد').toBeGreaterThan(0);
-  await expect(page.getByText(/فعالیت\s*1|فاز/)).toBeVisible();
+  await expect(page.getByText('فعالیت 1', { exact: true })).toBeVisible();
 
   await waitForPaint(page);
   const root = page.getByTestId('gantt-editor-root');
@@ -107,7 +107,19 @@ async function captureGanttEditor(page: Page, projectId: string): Promise<void> 
 
   mkdirSync(OUT, { recursive: true });
   const outPath = join(OUT, 'gantt-editor-1920x1080.png');
-  await root.screenshot({ path: outPath });
+  // فقط ناحیهٔ مرئی در viewport (نه عرض کامل timeline اسکرول‌شونده)
+  const box = await root.boundingBox();
+  expect(box, 'gantt-editor-root باید در viewport ابعاد داشته باشد').toBeTruthy();
+  if (!box) throw new Error('gantt-editor-root boundingBox خالی است');
+  await page.screenshot({
+    path: outPath,
+    clip: {
+      x: Math.max(0, box.x),
+      y: Math.max(0, box.y),
+      width: Math.min(box.width, page.viewportSize()?.width ?? box.width),
+      height: Math.min(box.height, (page.viewportSize()?.height ?? box.height) - Math.max(0, box.y)),
+    },
+  });
 
   const size = statSync(outPath).size;
   expect(size, 'Screenshot گانت نباید PNG خالی/ناچیز باشد').toBeGreaterThan(40_000);
