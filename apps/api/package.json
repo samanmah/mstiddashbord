@@ -16,13 +16,15 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
+    "prisma:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/seed/run-seed.ts",
     "prisma:studio": "prisma studio",
     "project-control:import": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/modules/project-control/import/cli/import.cli.ts",
-    "project-control:mpp-check": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/modules/project-control/import/cli/mpp-check.cli.ts"
+    "project-control:mpp-check": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/modules/project-control/import/cli/mpp-check.cli.ts",
+    "project-control:import:prod": "node dist/modules/project-control/import/cli/import.cli.js",
+    "project-control:mpp-check:prod": "node dist/modules/project-control/import/cli/mpp-check.cli.js"
   },
   "prisma": {
-    "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
+    "seed": "node dist/seed/run-seed.js"
   },
   "dependencies": {
     "@ppm/contracts": "workspace:*",
@@ -47,6 +49,7 @@
     "passport": "0.7.0",
     "passport-jwt": "4.0.1",
     "pino-http": "10.3.0",
+    "prisma": "5.22.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.1",
     "uuid": "11.0.3"
@@ -68,7 +71,6 @@
     "eslint": "9.13.0",
     "jest": "29.7.0",
     "pino-pretty": "13.0.0",
-    "prisma": "5.22.0",
     "supertest": "7.0.0",
     "ts-jest": "29.2.5",
     "ts-node": "10.9.2",

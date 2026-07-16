@@ -17,8 +17,11 @@ apps/api/prisma/migrations/**/migration_lock.toml.bak
 .env
 .env.local
 .env.*.local
+.env.staging
+.env.production
 *.env
 !.env.example
+!.env.staging.example
 
 # Logs
 logs/

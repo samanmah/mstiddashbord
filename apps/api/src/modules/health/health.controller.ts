@@ -30,6 +30,14 @@ export class HealthController {
     }
   }
 
+  private buildInfo(): { version: string; gitSha: string; buildDate: string } {
+    return {
+      version: process.env.APP_VERSION ?? process.env.npm_package_version ?? 'unknown',
+      gitSha: process.env.GIT_SHA ?? 'unknown',
+      buildDate: process.env.BUILD_DATE ?? 'unknown',
+    };
+  }
+
   @Public()
   @Get()
   @HealthCheck()
@@ -40,9 +48,19 @@ export class HealthController {
 
   @Public()
   @Get('liveness')
-  @ApiOperation({ summary: 'زنده بودن سرویس' })
-  liveness(): { status: string; timestamp: string } {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+  @ApiOperation({ summary: 'زنده بودن سرویس + نسخه Build' })
+  liveness(): {
+    status: string;
+    timestamp: string;
+    version: string;
+    gitSha: string;
+    buildDate: string;
+  } {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      ...this.buildInfo(),
+    };
   }
 
   @Public()

@@ -5,7 +5,7 @@ import type {
   DataQualityReport,
 } from '../../api/project-control-types';
 import { ControlNodeStatus } from '../../api/project-control-types';
-import { makeNode } from '../../utils/wbs-fixtures';
+import { makeComputation, makeNode } from '../../utils/wbs-fixtures';
 import { CriticalTasksTable } from './critical-tasks-table';
 import { DashboardDataQuality } from './dashboard-data-quality';
 import { ExecutiveKpis } from './executive-kpis';
@@ -69,7 +69,7 @@ describe('CriticalTasksTable', () => {
 
   it('renders a row per task', () => {
     const tasks = [
-      makeNode({ id: 't1', title: 'فعالیت بحرانی', computed: { isCritical: true } }),
+      makeNode({ id: 't1', title: 'فعالیت بحرانی', computed: makeComputation({ isCritical: true }) }),
     ];
     render(<CriticalTasksTable tasks={tasks} />);
     expect(screen.getByText('فعالیت بحرانی')).toBeInTheDocument();

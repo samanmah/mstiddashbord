@@ -1,0 +1,95 @@
+# ==========================================================================
+# Docker Compose Override — Staging ایزوله برای Advanced Project Control
+#
+# استفاده:
+#   export COMPOSE_PROJECT_NAME=ppm_project_control_staging
+#   docker compose \
+#     -f compose.production.yml \
+#     -f compose.staging.yml \
+#     --env-file .env.staging \
+#     up -d
+#
+# این فایل Production را تکرار نمی‌کند؛ فقط Override است.
+# پورت/Volume/Network مستقل — به Production متصل نمی‌شود.
+# ==========================================================================
+
+name: ppm_project_control_staging
+
+services:
+  postgres:
+    container_name: ppm_pc_staging_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ppm_staging_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: ${POSTGRES_DB:-ppm_project_control_staging}
+    ports: !override
+      - '127.0.0.1:15432:5432'
+    volumes: !override
+      - staging_postgres_data:/var/lib/postgresql
+    networks: !override
+      - ppm_staging_internal
+
+  api:
+    container_name: ppm_pc_staging_api
+    image: ${API_IMAGE:?API_IMAGE required — از latest برای RC استفاده نکنید}
+    environment:
+      NODE_ENV: development
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      CORS_ORIGINS: ${APP_ORIGIN:-http://127.0.0.1:18080}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ppm_staging_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ppm_project_control_staging}?schema=public
+      RUN_SEED_ON_START: ${RUN_SEED_ON_START:-true}
+      APP_VERSION: ${APP_VERSION:-staging}
+      GIT_SHA: ${GIT_SHA:-unknown}
+      UPLOAD_DIR: /app/uploads
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_SIZE:-20971520}
+      IMPORT_TEMP_DIR: ${IMPORT_TEMP_DIR:-/tmp/ppm-import}
+      MPXJ_ADAPTER_PATH: ${MPXJ_ADAPTER_PATH:-}
+      JAVA_HOME: ${JAVA_HOME:-}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+    volumes: !override
+      - staging_api_uploads:/app/uploads
+    networks: !override
+      - ppm_staging_internal
+
+  web:
+    container_name: ppm_pc_staging_web
+    image: ${WEB_IMAGE:?WEB_IMAGE required — از latest برای RC استفاده نکنید}
+    environment:
+      NODE_ENV: development
+      APP_VERSION: ${APP_VERSION:-staging}
+      GIT_SHA: ${GIT_SHA:-unknown}
+      API_UPSTREAM_URL: http://api:4000
+    networks: !override
+      - ppm_staging_internal
+
+  nginx:
+    container_name: ppm_pc_staging_nginx
+    ports: !override
+      - '127.0.0.1:18080:80'
+      - '127.0.0.1:18443:443'
+    volumes: !override
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infrastructure/nginx/certs:/etc/nginx/certs:ro
+      - staging_nginx_cache:/var/cache/nginx
+    networks: !override
+      - ppm_staging_internal
+
+volumes:
+  staging_postgres_data:
+  staging_api_uploads:
+  staging_nginx_cache:
+  # جلوگیری از استفاده تصادفی Volumeهای Production در این Project Name
+  postgres_data:
+    name: ppm_pc_staging_unused_postgres_data
+  api_uploads:
+    name: ppm_pc_staging_unused_api_uploads
+  nginx_cache:
+    name: ppm_pc_staging_unused_nginx_cache
+
+networks:
+  ppm_staging_internal:
+    driver: bridge
+  ppm_internal:
+    name: ppm_pc_staging_unused_internal
+    driver: bridge

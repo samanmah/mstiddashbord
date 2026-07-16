@@ -6,12 +6,13 @@ verifyDepsBeforeRun: false
 autoInstallPeers: true
 strictPeerDependencies: false
 
-onlyBuiltDependencies:
-  - esbuild
-  - "@prisma/client"
-  - "@prisma/engines"
-  - prisma
-  - argon2
-  - "@nestjs/core"
-  - sharp
-  - unrs-resolver
+# pnpm 11: allowBuilds جایگزین onlyBuiltDependencies است.
+allowBuilds:
+  esbuild: true
+  "@prisma/client": true
+  "@prisma/engines": true
+  prisma: true
+  argon2: true
+  "@nestjs/core": true
+  sharp: true
+  unrs-resolver: true
