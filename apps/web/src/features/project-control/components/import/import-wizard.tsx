@@ -19,10 +19,13 @@ import { EmptyState } from '@/components/ui/states';
 import { isApiError } from '@/lib/api-error';
 import { cn, faNumber } from '@/lib/utils';
 import {
+  assertImportBatchId,
+  IMPORT_BATCH_ID_MISSING_MESSAGE,
+} from '../../api/project-control-api';
+import {
   ImportIssueLevel,
   type ControlImportCommitResult,
   type ControlImportPreview,
-  type ImportBatchDto,
 } from '../../api/project-control-types';
 import {
   useCommitImport,
@@ -65,7 +68,7 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
   const [step, setStep] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [hash, setHash] = useState<string | null>(null);
-  const [batch, setBatch] = useState<ImportBatchDto | null>(null);
+  const [batchId, setBatchId] = useState<string | null>(null);
   const [preview, setPreview] = useState<ControlImportPreview | null>(null);
   const [decisions, setDecisions] = useState<Record<number, ConflictDecision>>({});
   const [allowWarnings, setAllowWarnings] = useState(false);
@@ -100,10 +103,17 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
     upload.mutate(
       { file, sourceType: isMpp ? 'MPP' : 'EXCEL' },
       {
-        onSuccess: (b) => {
-          setBatch(b);
+        onSuccess: (uploadResult) => {
+          const importBatchId = uploadResult.importBatchId;
+          try {
+            assertImportBatchId(importBatchId);
+          } catch (e) {
+            toast.error(isApiError(e) ? e.message : IMPORT_BATCH_ID_MISSING_MESSAGE);
+            return;
+          }
+          setBatchId(importBatchId);
           previewMut.mutate(
-            { id: b.id, dryRun: true },
+            { id: importBatchId, dryRun: true },
             {
               onSuccess: (p) => {
                 setPreview(p);
@@ -124,10 +134,10 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
   };
 
   const applyMapping = (): void => {
-    if (!batch || !preview) return;
+    if (!batchId || !preview) return;
     const mappings = decisionsToMappings(preview.conflicts, decisions);
     mapMut.mutate(
-      { id: batch.id, mappings },
+      { id: batchId, mappings },
       {
         onSuccess: (p) => {
           setPreview(p);
@@ -140,8 +150,8 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
   };
 
   const runDryRun = (): void => {
-    if (!batch) return;
-    validateMut.mutate(batch.id, {
+    if (!batchId) return;
+    validateMut.mutate(batchId, {
       onSuccess: (p) => {
         setPreview(p);
         setStep(5);
@@ -151,9 +161,9 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
   };
 
   const runCommit = (): void => {
-    if (!batch) return;
+    if (!batchId) return;
     commitMut.mutate(
-      { id: batch.id, allowWarnings },
+      { id: batchId, allowWarnings },
       {
         onSuccess: (r) => {
           setResult(r);

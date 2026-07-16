@@ -2,7 +2,9 @@
  * لایهٔ API «کنترل پروژه». از apiRequest مشترک پروژه استفاده می‌کند (Client دوم نمی‌سازد).
  * تمام مسیرها نسبی به /api/v1 هستند (پیشوند در apiRequest افزوده می‌شود).
  */
+import { ErrorCode } from '@ppm/contracts';
 import { apiRequest } from '@/lib/api-client';
+import { ApiError } from '@/lib/api-error';
 import type {
   BaselineCompareRow,
   BaselineDto,
@@ -26,6 +28,7 @@ import type {
   ReparentInput,
   SCurvePoint,
   TaskDependencyDto,
+  UploadImportResult,
   WbsNodeComputedDto,
   WbsNodeDto,
   WbsNodeInput,
@@ -33,6 +36,29 @@ import type {
 } from './project-control-types';
 
 const base = (projectId: string): string => `/projects/${projectId}/control`;
+
+/** پیام فارسی وقتی شناسهٔ دسته از سرور معتبر نباشد. */
+export const IMPORT_BATCH_ID_MISSING_MESSAGE =
+  'شناسه دسته ورود اطلاعات از سرور دریافت نشد. لطفاً صفحه را تازه‌سازی کرده و دوباره تلاش کنید.';
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Guard دفاعی قبل از preview/map/validate/commit.
+ * در صورت UUID نامعتبر، بدون ارسال Network Request با Error واضح Fail می‌شود.
+ */
+export function assertImportBatchId(id: unknown): asserts id is string {
+  if (typeof id !== 'string' || id.trim() === '' || !UUID_RE.test(id.trim())) {
+    throw new ApiError({
+      statusCode: 400,
+      code: ErrorCode.VALIDATION_ERROR,
+      message: IMPORT_BATCH_ID_MISSING_MESSAGE,
+      details: [],
+      requestId: '',
+    });
+  }
+}
 
 export const projectControlApi = {
   /* ------------------------------- Plan ------------------------------- */
@@ -127,34 +153,46 @@ export const projectControlApi = {
     const formData = new FormData();
     formData.append('file', file);
     if (sourceType) formData.append('sourceType', sourceType);
-    return apiRequest<ImportBatchDto>(`${base(projectId)}/imports/upload`, {
+    return apiRequest<UploadImportResult>(`${base(projectId)}/imports/upload`, {
       method: 'POST',
       formData,
     });
   },
-  previewImport: (projectId: string, id: string, dryRun = true) =>
-    apiRequest<ControlImportPreview>(`${base(projectId)}/imports/${id}/preview`, {
+  previewImport: async (projectId: string, id: string, dryRun = true) => {
+    assertImportBatchId(id);
+    return apiRequest<ControlImportPreview>(`${base(projectId)}/imports/${id}/preview`, {
       method: 'POST',
       body: { dryRun },
-    }),
-  mapImport: (projectId: string, id: string, mappings: ImportMappingItem[]) =>
-    apiRequest<ControlImportPreview>(`${base(projectId)}/imports/${id}/map`, {
+    });
+  },
+  mapImport: async (projectId: string, id: string, mappings: ImportMappingItem[]) => {
+    assertImportBatchId(id);
+    return apiRequest<ControlImportPreview>(`${base(projectId)}/imports/${id}/map`, {
       method: 'POST',
       body: { mappings },
-    }),
-  validateImport: (projectId: string, id: string) =>
-    apiRequest<ControlImportPreview>(`${base(projectId)}/imports/${id}/validate`, {
+    });
+  },
+  validateImport: async (projectId: string, id: string) => {
+    assertImportBatchId(id);
+    return apiRequest<ControlImportPreview>(`${base(projectId)}/imports/${id}/validate`, {
       method: 'POST',
-    }),
-  commitImport: (projectId: string, id: string, allowWarnings = false) =>
-    apiRequest<ControlImportCommitResult>(`${base(projectId)}/imports/${id}/commit`, {
+    });
+  },
+  commitImport: async (projectId: string, id: string, allowWarnings = false) => {
+    assertImportBatchId(id);
+    return apiRequest<ControlImportCommitResult>(`${base(projectId)}/imports/${id}/commit`, {
       method: 'POST',
       body: { confirm: true, allowWarnings },
-    }),
+    });
+  },
   listImports: (projectId: string) =>
     apiRequest<ImportBatchDto[]>(`${base(projectId)}/imports`),
-  getImport: (projectId: string, id: string) =>
-    apiRequest<ImportBatchDto>(`${base(projectId)}/imports/${id}`),
-  importErrors: (projectId: string, id: string) =>
-    apiRequest<ImportIssue[]>(`${base(projectId)}/imports/${id}/errors`),
+  getImport: async (projectId: string, id: string) => {
+    assertImportBatchId(id);
+    return apiRequest<ImportBatchDto>(`${base(projectId)}/imports/${id}`);
+  },
+  importErrors: async (projectId: string, id: string) => {
+    assertImportBatchId(id);
+    return apiRequest<ImportIssue[]>(`${base(projectId)}/imports/${id}/errors`);
+  },
 };

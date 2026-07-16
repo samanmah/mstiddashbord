@@ -260,3 +260,12 @@ export interface ControlImportCommitResult {
   updatedNodes: number;
   status: 'COMPLETED' | 'FAILED';
 }
+
+/**
+ * پاسخ POST .../imports/upload — فقط شناسهٔ دسته و نوع منبع.
+ * با ImportBatchDto (جزئیات کامل دسته در list/get) اشتباه گرفته نشود.
+ */
+export interface UploadImportResult {
+  importBatchId: string;
+  sourceType: 'EXCEL' | 'MPP';
+}

@@ -43,6 +43,7 @@ export type {
   ImportConflict,
   ControlImportPreview,
   ControlImportCommitResult,
+  UploadImportResult,
   MppEnvironmentStatus,
   ParsedWbsRow,
 } from '@ppm/contracts';

@@ -1,7 +1,13 @@
 import { expect, test } from '@playwright/test';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertAuthMe, assertFixtureProject, getFixtureProjectId } from './helpers';
+import {
+  assertAuthMe,
+  assertFixtureProject,
+  attachImportBatchIdRegressionGuard,
+  getFixtureProjectId,
+} from './helpers';
 
 /**
  * E2E کنترل پروژه پیشرفته روی Stack واقعی (Staging).
@@ -12,6 +18,21 @@ import { assertAuthMe, assertFixtureProject, getFixtureProjectId } from './helpe
 const e2eDir = dirname(fileURLToPath(import.meta.url));
 const editorAuth = join(e2eDir, '.auth/editor.json');
 const viewerAuth = join(e2eDir, '.auth/viewer.json');
+const repoRoot = join(e2eDir, '../../..');
+
+function resolveExcelFixturePath(): string {
+  const candidates = [
+    join(repoRoot, 'artifacts/project-control/gantt-fixture.xlsx'),
+    join(repoRoot, 'references/project-control/ساختار شکست کار بهمراه گانت چارت طرح پیشران نوآوری V03 تاریخ 1450423.xlsx'),
+  ];
+  for (const path of candidates) {
+    if (existsSync(path)) return path;
+  }
+  throw new Error('فایل Excel Fixture برای E2E Upload یافت نشد.');
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 test.describe('کنترل پروژه — Editor مسیر اصلی', () => {
   test.use({ storageState: editorAuth });
@@ -49,12 +70,64 @@ test.describe('کنترل پروژه — Editor مسیر اصلی', () => {
   });
 
   test('۴) Import Wizard و Manifest', async ({ page }) => {
+    attachImportBatchIdRegressionGuard(page);
     const projectId = getFixtureProjectId();
     await assertFixtureProject(page.request, projectId);
     await page.goto(`/admin/projects/${projectId}/control/imports`);
     await assertAuthMe(page, 'editor');
     await expect(page.getByTestId('import-wizard')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: 'بارگذاری و تحلیل' })).toBeVisible();
+  });
+
+  test('۴ب) Upload واقعی Excel تا مرحله Manifest با UUID معتبر', async ({ page }) => {
+    test.setTimeout(90_000);
+    attachImportBatchIdRegressionGuard(page);
+    const projectId = getFixtureProjectId();
+    await assertFixtureProject(page.request, projectId);
+    const excelPath = resolveExcelFixturePath();
+
+    const uploadResponsePromise = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/api/v1/projects/${projectId}/control/imports/upload`) &&
+        res.request().method() === 'POST',
+    );
+    const previewResponsePromise = page.waitForResponse(
+      (res) =>
+        /\/api\/v1\/projects\/[^/]+\/control\/imports\/[^/]+\/preview/.test(res.url()) &&
+        res.request().method() === 'POST',
+    );
+
+    await page.goto(`/admin/projects/${projectId}/control/imports`);
+    await assertAuthMe(page, 'editor');
+    await expect(page.getByTestId('import-wizard')).toBeVisible({ timeout: 15_000 });
+
+    await page.locator('input[type="file"]').setInputFiles(excelPath);
+    await page.getByRole('button', { name: 'بارگذاری و تحلیل' }).click();
+
+    const uploadRes = await uploadResponsePromise;
+    expect(uploadRes.status(), 'Upload باید 201 باشد').toBe(201);
+    const uploadBody = (await uploadRes.json()) as {
+      importBatchId?: string;
+      sourceType?: string;
+    };
+    expect(typeof uploadBody.importBatchId).toBe('string');
+    expect(uploadBody.importBatchId && UUID_RE.test(uploadBody.importBatchId)).toBe(true);
+    expect(uploadBody.sourceType).toBe('EXCEL');
+
+    const previewRes = await previewResponsePromise;
+    expect(previewRes.url()).toContain(`/imports/${uploadBody.importBatchId}/preview`);
+    expect(previewRes.url()).not.toContain('/imports/undefined/');
+    expect(previewRes.url()).not.toContain('/imports/null/');
+    expect(previewRes.ok(), `Preview باید موفق باشد (status=${previewRes.status()})`).toBe(true);
+
+    await expect(
+      page.getByText(/Manifest معتبر است|عدم تطابق Manifest/),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('columnheader', { name: 'معیار' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'مرحلهٔ بعد' }).click();
+    await expect(page.getByText('فازها', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('کل نودها', { exact: true })).toBeVisible();
   });
 
   test('۵) Gantt Editor با Zoom', async ({ page }) => {
