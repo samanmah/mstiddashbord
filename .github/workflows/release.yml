@@ -1,0 +1,607 @@
+# =============================================================================
+# Release Pipeline — تنها مسیر مجاز Deploy
+#
+# Git push → GitHub Actions → Build linux/amd64 → GHCR → Pull روی Server
+# → Staging validation → (tag/manual) Production با Environment approval
+#
+# ممنوع: docker build روی Mac، docker save/scp Image، Deploy با latest،
+#        npm/pnpm روی Server برای E2E، down -v، Rollback فقط API،
+#        Deploy فقط با compose.production.yml
+# =============================================================================
+
+name: Release
+
+on:
+  push:
+    branches:
+      - feature/advanced-project-control-wbs-gantt
+    tags:
+      - 'release-*'
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Full commit SHA برای Release (خالی = SHA همین run)'
+        required: false
+        type: string
+      deploy_production:
+        description: 'پس از Staging سبز، Production را با approval اجرا کن'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+  actions: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_API: ghcr.io/samanmah/mstiddashbord-api
+  IMAGE_WEB: ghcr.io/samanmah/mstiddashbord-web
+  NODE_VERSION: '24'
+  PNPM_VERSION: '11.5.0'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve FULL_SHA و نوع Release
+  # ---------------------------------------------------------------------------
+  resolve:
+    name: Resolve release target
+    runs-on: ubuntu-latest
+    outputs:
+      full_sha: ${{ steps.meta.outputs.full_sha }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+      build_date: ${{ steps.meta.outputs.build_date }}
+      is_release_tag: ${{ steps.meta.outputs.is_release_tag }}
+      deploy_production: ${{ steps.meta.outputs.deploy_production }}
+      staging_only: ${{ steps.meta.outputs.staging_only }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha != '' && inputs.release_sha || github.sha }}
+
+      - name: Compute metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.release_sha }}" ]]; then
+            FULL_SHA="$(git rev-parse --verify "${{ inputs.release_sha }}^{commit}")"
+          else
+            FULL_SHA="$(git rev-parse HEAD)"
+          fi
+          if [[ "${#FULL_SHA}" -ne 40 ]]; then
+            echo "FULL_SHA must be 40 chars, got: ${FULL_SHA}" >&2
+            exit 1
+          fi
+          SHORT_SHA="$(printf '%s' "$FULL_SHA" | cut -c1-7)"
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          IS_TAG=false
+          DEPLOY_PROD=false
+          STAGING_ONLY=true
+
+          if [[ "${{ github.ref_type }}" == "tag" && "${{ github.ref_name }}" == release-* ]]; then
+            IS_TAG=true
+            DEPLOY_PROD=true
+            STAGING_ONLY=false
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.deploy_production }}" == "true" ]]; then
+            DEPLOY_PROD=true
+            STAGING_ONLY=false
+          fi
+
+          {
+            echo "full_sha=${FULL_SHA}"
+            echo "short_sha=${SHORT_SHA}"
+            echo "build_date=${BUILD_DATE}"
+            echo "is_release_tag=${IS_TAG}"
+            echo "deploy_production=${DEPLOY_PROD}"
+            echo "staging_only=${STAGING_ONLY}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "FULL_SHA=${FULL_SHA}"
+          echo "deploy_production=${DEPLOY_PROD}"
+          echo "staging_only=${STAGING_ONLY}"
+
+  # ---------------------------------------------------------------------------
+  # Verify — هیچ تستی Skip نمی‌شود
+  # ---------------------------------------------------------------------------
+  verify:
+    name: Verify
+    needs: resolve
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: ppm_user
+          POSTGRES_PASSWORD: ppm_pass
+          POSTGRES_DB: ppm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ppm_user -d ppm_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://ppm_user:ppm_pass@localhost:5432/ppm_test?schema=public
+      JWT_ACCESS_SECRET: ci_access_secret_min_32_chars_0000000000
+      JWT_REFRESH_SECRET: ci_refresh_secret_min_32_chars_000000000
+      COOKIE_SECRET: ci_cookie_secret_min_32_chars_0000000000
+      SEED_EDITOR_USERNAME: editor
+      SEED_EDITOR_PASSWORD: Editor@Passw0rd!
+      SEED_VIEWER_USERNAME: viewer
+      SEED_VIEWER_PASSWORD: Viewer@Passw0rd!
+      TZ: Asia/Tehran
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.full_sha }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ppm/contracts build
+      - run: pnpm --filter @ppm/api prisma:generate
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm --filter @ppm/api prisma:deploy
+      - run: pnpm test
+      - run: pnpm --filter @ppm/api test:integration
+      - run: pnpm build
+      - run: git diff --check
+
+  # ---------------------------------------------------------------------------
+  # Build & Push linux/amd64 — Tag = Full SHA (نه latest به‌عنوان منبع Deploy)
+  # ---------------------------------------------------------------------------
+  build-push:
+    name: Build & Push GHCR
+    needs: [resolve, verify]
+    runs-on: ubuntu-latest
+    outputs:
+      api_digest: ${{ steps.api.outputs.digest }}
+      web_digest: ${{ steps.web.outputs.digest }}
+      api_image: ${{ steps.tags.outputs.api_image }}
+      web_image: ${{ steps.tags.outputs.web_image }}
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.full_sha }}
+
+      - name: Set image tags
+        id: tags
+        run: |
+          SHA="${{ needs.resolve.outputs.full_sha }}"
+          echo "api_image=${{ env.IMAGE_API }}:${SHA}" >> "$GITHUB_OUTPUT"
+          echo "web_image=${{ env.IMAGE_WEB }}:${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push API (linux/amd64)
+        id: api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            APP_VERSION=${{ needs.resolve.outputs.full_sha }}
+            GIT_SHA=${{ needs.resolve.outputs.full_sha }}
+            BUILD_DATE=${{ needs.resolve.outputs.build_date }}
+          tags: |
+            ${{ env.IMAGE_API }}:${{ needs.resolve.outputs.full_sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+          provenance: false
+
+      - name: Build & push Web (linux/amd64)
+        id: web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=/api/v1
+            APP_VERSION=${{ needs.resolve.outputs.full_sha }}
+            GIT_SHA=${{ needs.resolve.outputs.full_sha }}
+            BUILD_DATE=${{ needs.resolve.outputs.build_date }}
+          tags: |
+            ${{ env.IMAGE_WEB }}:${{ needs.resolve.outputs.full_sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+          provenance: false
+
+      - name: Record digests
+        run: |
+          echo "API digest=${{ steps.api.outputs.digest }}"
+          echo "WEB digest=${{ steps.web.outputs.digest }}"
+          test -n "${{ steps.api.outputs.digest }}"
+          test -n "${{ steps.web.outputs.digest }}"
+
+  # ---------------------------------------------------------------------------
+  # Staging Deploy (SSH) — Image از GHCR، secrets از /opt/ppm/secrets
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy Staging
+    needs: [resolve, build-push]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout scripts at SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.full_sha }}
+
+      - name: Prepare SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Sync release scripts to server (exact SHA worktree path will fetch)
+        env:
+          FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
+        run: |
+          set -euo pipefail
+          PORT="${{ secrets.SERVER_PORT }}"
+          HOST="${{ secrets.SERVER_HOST }}"
+          USER="${{ secrets.SERVER_USER }}"
+          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+          ssh -i ~/.ssh/id_deploy -p "$PORT" -o IdentitiesOnly=yes \
+            "${USER}@${HOST}" \
+            "set -euo pipefail
+             git -C '${DEPLOY_PATH}' fetch --prune origin
+             git -C '${DEPLOY_PATH}' cat-file -t '${FULL_SHA}' >/dev/null"
+
+      - name: Deploy Staging over SSH
+        env:
+          FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
+          API_DIGEST: ${{ needs.build-push.outputs.api_digest }}
+          WEB_DIGEST: ${{ needs.build-push.outputs.web_digest }}
+        run: |
+          set -euo pipefail
+          PORT="${{ secrets.SERVER_PORT }}"
+          HOST="${{ secrets.SERVER_HOST }}"
+          USER="${{ secrets.SERVER_USER }}"
+          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+          # Secrets هرگز echo نمی‌شوند
+          ssh -i ~/.ssh/id_deploy -p "$PORT" -o IdentitiesOnly=yes \
+            "${USER}@${HOST}" \
+            env FULL_SHA="$FULL_SHA" \
+                API_DIGEST="$API_DIGEST" \
+                WEB_DIGEST="$WEB_DIGEST" \
+                DEPLOY_PATH="$DEPLOY_PATH" \
+                GHCR_READ_TOKEN="${{ secrets.GHCR_READ_TOKEN }}" \
+                GHCR_USERNAME=samanmah \
+                STAGING_ENV_FILE=/opt/ppm/secrets/.env.staging \
+                bash -s <<'REMOTE'
+          set -euo pipefail
+          # Ensure deploy script exists at FULL_SHA via worktree bootstrap from DEPLOY_PATH
+          WT_ROOT=/opt/ppm/releases/worktrees
+          mkdir -p "$WT_ROOT"
+          WT="${WT_ROOT}/${FULL_SHA}"
+          if [[ ! -d "$WT" ]]; then
+            git -C "${DEPLOY_PATH}" worktree add --detach "$WT" "${FULL_SHA}"
+          fi
+          chmod +x "$WT/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
+          "$WT/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
+          REMOTE
+
+  # ---------------------------------------------------------------------------
+  # Smoke Staging
+  # ---------------------------------------------------------------------------
+  smoke-staging:
+    name: Smoke Staging
+    needs: [resolve, deploy-staging]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.full_sha }}
+
+      - name: Prepare SSH + tunnel
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh -fN -L 18080:127.0.0.1:18080 \
+            -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" \
+            -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}"
+          sleep 2
+          curl -fsS http://127.0.0.1:18080/api/v1/health/liveness
+
+      - name: Assert liveness FULL_SHA
+        env:
+          FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
+        run: |
+          set -euo pipefail
+          LIVE="$(curl -fsS http://127.0.0.1:18080/api/v1/health/liveness)"
+          echo "$LIVE" | grep -Fq "\"gitSha\":\"${FULL_SHA}\""
+          curl -fsS http://127.0.0.1:18080/api/v1/health/readiness >/dev/null
+          echo "Staging liveness SHA OK"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Build sanitized fixture on runner (no npm on server)
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm --filter @ppm/contracts build
+          pnpm --filter @ppm/api prisma:generate
+          pnpm --filter @ppm/api build
+          node infrastructure/scripts/project-control/generate-fixture.mjs
+          test -s artifacts/project-control/gantt-fixture.xlsx
+
+      - name: Import fixture on server via docker CLI (no pnpm on host)
+        env:
+          FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
+        run: |
+          set -euo pipefail
+          WT_REMOTE="/opt/ppm/releases/worktrees/${FULL_SHA}"
+          scp -i ~/.ssh/id_deploy -P "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            artifacts/project-control/gantt-fixture.xlsx \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/gantt-fixture.xlsx"
+          scp -i ~/.ssh/id_deploy -P "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            infrastructure/scripts/project-control/ci-import-fixture-remote.sh \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/ci-import-fixture-remote.sh"
+          ssh -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            "chmod +x /tmp/ci-import-fixture-remote.sh && \
+             FIXTURE=/tmp/gantt-fixture.xlsx ARTIFACT_DIR=${WT_REMOTE}/artifacts/project-control \
+             STAGING_ENV_FILE=/opt/ppm/secrets/.env.staging \
+             /tmp/ci-import-fixture-remote.sh"
+          mkdir -p artifacts/project-control
+          scp -i ~/.ssh/id_deploy -P "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${WT_REMOTE}/artifacts/project-control/staging-project-id.txt" \
+            artifacts/project-control/staging-project-id.txt
+          test -s artifacts/project-control/staging-project-id.txt
+
+      - name: Run full smoke on server (no host npm)
+        env:
+          FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/id_deploy -P "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            infrastructure/scripts/project-control/ci-smoke-staging.sh \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/ci-smoke-staging.sh"
+          ssh -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            "chmod +x /tmp/ci-smoke-staging.sh && \
+             FULL_SHA=${FULL_SHA} STAGING_ENV_FILE=/opt/ppm/secrets/.env.staging \
+             /tmp/ci-smoke-staging.sh"
+
+  # ---------------------------------------------------------------------------
+  # E2E روی GitHub Runner با SSH Tunnel — بدون npm روی Server
+  # ---------------------------------------------------------------------------
+  e2e-staging:
+    name: E2E Staging (19/19)
+    needs: [resolve, smoke-staging]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.full_sha }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies (runner only)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @ppm/web exec playwright install --with-deps chromium
+
+      - name: SSH tunnel to Staging
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh -fN -L 18080:127.0.0.1:18080 \
+            -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" \
+            -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}"
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS http://127.0.0.1:18080/api/v1/health/liveness >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:18080/api/v1/health/liveness >/dev/null
+
+      - name: Fetch fixture project id from server
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/project-control
+          scp -i ~/.ssh/id_deploy -P "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/ppm/releases/worktrees/${{ needs.resolve.outputs.full_sha }}/artifacts/project-control/staging-project-id.txt" \
+            artifacts/project-control/staging-project-id.txt
+          test -s artifacts/project-control/staging-project-id.txt
+
+      - name: Run E2E against Staging tunnel
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:18080
+          E2E_EDITOR_USERNAME: ${{ secrets.STAGING_EDITOR_USERNAME }}
+          E2E_EDITOR_PASSWORD: ${{ secrets.STAGING_EDITOR_PASSWORD }}
+          E2E_VIEWER_USERNAME: ${{ secrets.STAGING_VIEWER_USERNAME }}
+          E2E_VIEWER_PASSWORD: ${{ secrets.STAGING_VIEWER_PASSWORD }}
+          PW_TEST_HTML_REPORT_OPEN: never
+          PLAYWRIGHT_HTML_OPEN: never
+        run: |
+          set -euo pipefail
+          chmod +x infrastructure/scripts/project-control/run-e2e.sh
+          ./infrastructure/scripts/project-control/run-e2e.sh
+          # پورت 9323 نباید Listen باشد
+          if ss -ltn | grep -q ':9323'; then
+            echo "ERROR: port 9323 still listening after E2E" >&2
+            exit 1
+          fi
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-${{ needs.resolve.outputs.short_sha }}
+          path: |
+            apps/web/test-results
+            apps/web/playwright-report
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Production — فقط بعد از همهٔ سبزها + Environment approval
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy Production
+    needs: [resolve, verify, build-push, deploy-staging, smoke-staging, e2e-staging]
+    if: needs.resolve.outputs.deploy_production == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      backup_file: ${{ steps.deploy.outputs.backup_file }}
+      backup_sha256: ${{ steps.deploy.outputs.backup_sha256 }}
+      state_dir: ${{ steps.deploy.outputs.state_dir }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.full_sha }}
+
+      - name: Prepare SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Deploy Production over SSH
+        id: deploy
+        env:
+          FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
+          API_DIGEST: ${{ needs.build-push.outputs.api_digest }}
+          WEB_DIGEST: ${{ needs.build-push.outputs.web_digest }}
+        run: |
+          set -euo pipefail
+          OUT="$(mktemp)"
+          ssh -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            env FULL_SHA="$FULL_SHA" \
+                API_DIGEST="$API_DIGEST" \
+                WEB_DIGEST="$WEB_DIGEST" \
+                DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}" \
+                GHCR_READ_TOKEN="${{ secrets.GHCR_READ_TOKEN }}" \
+                GHCR_USERNAME=samanmah \
+                bash -s <<'REMOTE' | tee "$OUT"
+          set -euo pipefail
+          WT="/opt/ppm/releases/worktrees/${FULL_SHA}"
+          if [[ ! -d "$WT" ]]; then
+            git -C "${DEPLOY_PATH}" worktree add --detach "$WT" "${FULL_SHA}"
+          fi
+          chmod +x "$WT/infrastructure/scripts/project-control/ci-deploy-production-remote.sh"
+          "$WT/infrastructure/scripts/project-control/ci-deploy-production-remote.sh"
+          REMOTE
+          BACKUP_FILE="$(grep -E '^BACKUP_FILE=' "$OUT" | tail -1 | cut -d= -f2- || true)"
+          BACKUP_SHA256="$(grep -E '^BACKUP_SHA256=' "$OUT" | tail -1 | cut -d= -f2- || true)"
+          STATE_DIR="$(grep -E '^STATE_DIR=' "$OUT" | tail -1 | cut -d= -f2- || true)"
+          echo "backup_file=${BACKUP_FILE}" >> "$GITHUB_OUTPUT"
+          echo "backup_sha256=${BACKUP_SHA256}" >> "$GITHUB_OUTPUT"
+          echo "state_dir=${STATE_DIR}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Production liveness FULL_SHA
+        env:
+          FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            "curl -fsS http://127.0.0.1:1011/api/v1/health/liveness" | tee /tmp/prod-live.json
+          grep -Fq "\"gitSha\":\"${FULL_SHA}\"" /tmp/prod-live.json
+          ssh -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            "curl -fsS http://127.0.0.1:1011/api/v1/health/readiness" >/dev/null
+
+  # ---------------------------------------------------------------------------
+  # Summary
+  # ---------------------------------------------------------------------------
+  summary:
+    name: Release Summary
+    needs: [resolve, verify, build-push, deploy-staging, smoke-staging, e2e-staging, deploy-production]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write summary
+        run: |
+          {
+            echo "## Release Summary"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Commit | \`${{ needs.resolve.outputs.full_sha }}\` |"
+            echo "| Tag / ref | \`${{ github.ref_name }}\` |"
+            echo "| API image | \`${{ needs.build-push.outputs.api_image }}\` |"
+            echo "| API digest | \`${{ needs.build-push.outputs.api_digest }}\` |"
+            echo "| Web image | \`${{ needs.build-push.outputs.web_image }}\` |"
+            echo "| Web digest | \`${{ needs.build-push.outputs.web_digest }}\` |"
+            echo "| Deploy production requested | \`${{ needs.resolve.outputs.deploy_production }}\` |"
+            echo "| Verify | \`${{ needs.verify.result }}\` |"
+            echo "| Build | \`${{ needs.build-push.result }}\` |"
+            echo "| Staging | \`${{ needs.deploy-staging.result }}\` |"
+            echo "| Smoke | \`${{ needs.smoke-staging.result }}\` |"
+            echo "| E2E | \`${{ needs.e2e-staging.result }}\` |"
+            echo "| Production | \`${{ needs.deploy-production.result }}\` |"
+            echo "| Backup | \`${{ needs.deploy-production.outputs.backup_file }}\` |"
+            echo "| Backup SHA256 | \`${{ needs.deploy-production.outputs.backup_sha256 }}\` |"
+            echo "| Actions run | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} |"
+            echo ""
+            echo "Excel Import: جدا از Pipeline کد — پس از Deploy از UI امن Production Upload شود."
+            echo "MPP: Java+MPXJ داخل API Image؛ Badge «MPP آماده است» فقط وقتی javaAvailable && mpxjAvailable."
+            echo "HTTPS cutover: docs/project-control/release/https-cutover-task.md"
+          } >> "$GITHUB_STEP_SUMMARY"

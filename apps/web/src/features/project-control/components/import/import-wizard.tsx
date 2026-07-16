@@ -240,8 +240,16 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
               </Button>
               {mppCheck.isFetchedAfterMount && mppCheck.data ? (
                 <StatusBadge
-                  tone={mppCheck.data.mpxjAvailable ? 'green' : 'orange'}
-                  label={mppCheck.data.mpxjAvailable ? 'MPP آماده است' : 'MPP در دسترس نیست'}
+                  tone={
+                    mppCheck.data.javaAvailable && mppCheck.data.mpxjAvailable
+                      ? 'green'
+                      : 'orange'
+                  }
+                  label={
+                    mppCheck.data.javaAvailable && mppCheck.data.mpxjAvailable
+                      ? 'MPP آماده است'
+                      : 'MPP در دسترس نیست'
+                  }
                   showDot={false}
                 />
               ) : null}
@@ -251,7 +259,7 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
             </Button>
           </div>
 
-          {mppCheck.data && !mppCheck.data.mpxjAvailable ? (
+          {mppCheck.data && !(mppCheck.data.javaAvailable && mppCheck.data.mpxjAvailable) ? (
             <p className="text-xs text-grayx-header">{mppCheck.data.message}</p>
           ) : null}
         </div>

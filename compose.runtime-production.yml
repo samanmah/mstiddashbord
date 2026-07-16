@@ -1,0 +1,32 @@
+# ==========================================================================
+# Docker Compose — Runtime Production فعلی سرور
+# مسیر کانونی روی سرور: /opt/ppm/compose.runtime-production.yml
+#
+# مهم: سامانه فعلاً روی HTTP:1011 با تنظیمات زیر پایدار است.
+# این Hotfix نباید NODE_ENV/COOKIE_SECURE را ناگهانی به HTTPS/Production
+# سخت‌گیرانه تغییر دهد و سامانه را Down کند.
+#
+# Task جدا برای HTTPS (پورت 1012، TLS، APP_ORIGIN=https://...،
+# NODE_ENV=production، COOKIE_SECURE=true) — تا آماده‌شدن TLS این فایل
+# Runtime فعلی را حفظ می‌کند.
+# ==========================================================================
+
+services:
+  api:
+    environment:
+      # حفظ Runtime فعلی سرور (HTTP موقت)
+      NODE_ENV: ${NODE_ENV:-development}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      CORS_ORIGINS: ${APP_ORIGIN:-http://127.0.0.1:1011}
+      RUN_SEED_ON_START: ${RUN_SEED_ON_START:-false}
+      APP_VERSION: ${APP_VERSION:-unknown}
+      GIT_SHA: ${GIT_SHA:-unknown}
+      MPXJ_HELPER_JAR: ${MPXJ_HELPER_JAR:-/app/mpp/mpxj-helper.jar}
+      JAVA_HOME: ${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk}
+
+  web:
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      APP_VERSION: ${APP_VERSION:-unknown}
+      GIT_SHA: ${GIT_SHA:-unknown}

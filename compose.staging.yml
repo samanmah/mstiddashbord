@@ -44,7 +44,8 @@ services:
       UPLOAD_MAX_BYTES: ${UPLOAD_MAX_SIZE:-20971520}
       IMPORT_TEMP_DIR: ${IMPORT_TEMP_DIR:-/tmp/ppm-import}
       MPXJ_ADAPTER_PATH: ${MPXJ_ADAPTER_PATH:-}
-      JAVA_HOME: ${JAVA_HOME:-}
+      MPXJ_HELPER_JAR: ${MPXJ_HELPER_JAR:-/app/mpp/mpxj-helper.jar}
+      JAVA_HOME: ${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
     volumes: !override
       - staging_api_uploads:/app/uploads

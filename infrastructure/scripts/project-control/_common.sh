@@ -5,8 +5,8 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
 
-RELEASE_COMMIT_DEFAULT="f39c712c8355b53960d3813ee5107e3853abe7a"
-RELEASE_SHORT_DEFAULT="f39c712"
+RELEASE_COMMIT_DEFAULT="0c9caa8734ef82326c7be95ac3943b37778e0618"
+RELEASE_SHORT_DEFAULT="0c9caa8"
 REGISTRY_API_DEFAULT="ghcr.io/samanmah/mstiddashbord-api"
 REGISTRY_WEB_DEFAULT="ghcr.io/samanmah/mstiddashbord-web"
 

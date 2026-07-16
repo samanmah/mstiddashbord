@@ -118,6 +118,7 @@ test.describe('کنترل پروژه — Editor مسیر اصلی', () => {
     expect(previewRes.url()).toContain(`/imports/${uploadBody.importBatchId}/preview`);
     expect(previewRes.url()).not.toContain('/imports/undefined/');
     expect(previewRes.url()).not.toContain('/imports/null/');
+    expect(previewRes.url()).not.toContain('/imports/[object Object]/
     expect(previewRes.ok(), `Preview باید موفق باشد (status=${previewRes.status()})`).toBe(true);
 
     await expect(

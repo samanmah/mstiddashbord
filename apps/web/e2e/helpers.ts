@@ -3,12 +3,19 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { UserRole } from '@ppm/contracts';
 
-/** Fail فوری اگر Frontend شناسهٔ دسته را undefined/null بسازد. */
+/** Fail فوری اگر Frontend شناسهٔ دسته را undefined/null/object بسازد. */
 export function attachImportBatchIdRegressionGuard(page: Page): void {
   page.on('request', (request) => {
     const url = request.url();
-    if (url.includes('/imports/undefined/') || url.includes('/imports/null/')) {
-      throw new Error(`درخواست ممنوع با شناسهٔ نامعتبر دستهٔ Import: ${url}`);
+    const banned = [
+      '/imports/undefined/',
+      '/imports/null/',
+      '/imports/[object Object]/
+    ];
+    for (const bad of banned) {
+      if (url.includes(bad)) {
+        throw new Error(`درخواست ممنوع با شناسهٔ نامعتبر دستهٔ Import: ${url}`);
+      }
     }
   });
 }

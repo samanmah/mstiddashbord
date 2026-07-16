@@ -2,6 +2,12 @@
 
 این راهنما مخصوص همین Repository است و با فایل‌های واقعی Compose هم‌خوان است.
 
+## مسیر Release مجاز (تنها)
+
+`Git push → GitHub Actions (.github/workflows/release.yml) → Build linux/amd64 → GHCR → Pull روی Server → Staging → (tag/approval) Production`
+
+**ممنوع:** `docker build` روی Mac، `docker save`/`scp` Image، Deploy با `latest`، `pnpm install` روی Server برای E2E.
+
 ## فایل‌های Compose واقعی
 
 | فایل | نقش |
@@ -9,6 +15,18 @@
 | `compose.yml` | توسعه محلی (build از Dockerfile) |
 | `compose.production.yml` | پایه Production |
 | `compose.staging.yml` | Override ایزوله Staging |
+| `compose.server.yml` | Overlay پورت سرور (کپی روی `/opt/ppm/`) |
+| `compose.runtime-production.yml` | Runtime فعلی HTTP:1011 (کپی روی `/opt/ppm/`) |
+
+Production Compose سه‌تایی الزامی:
+
+```bash
+docker compose \
+  -f <worktree>/compose.production.yml \
+  -f /opt/ppm/compose.server.yml \
+  -f /opt/ppm/compose.runtime-production.yml \
+  up -d
+```
 
 **استفاده نکنید:** `docker compose -f docker-compose.yml up -d --build`  
 (فایل `docker-compose.yml` در این پروژه وجود ندارد.)

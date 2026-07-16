@@ -57,6 +57,8 @@ services:
       SEED_EDITOR_PASSWORD: ${SEED_EDITOR_PASSWORD}
       SEED_VIEWER_USERNAME: ${SEED_VIEWER_USERNAME}
       SEED_VIEWER_PASSWORD: ${SEED_VIEWER_PASSWORD}
+      MPXJ_HELPER_JAR: ${MPXJ_HELPER_JAR:-/app/mpp/mpxj-helper.jar}
+      JAVA_HOME: ${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk}
     expose:
       - '4000'
     volumes:

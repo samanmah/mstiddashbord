@@ -3,7 +3,17 @@
 # ساخت از ریشه مخزن اجرا می‌شود: docker build -f apps/api/Dockerfile .
 # نکته: از # syntax=docker/dockerfile:1 استفاده نمی‌کنیم تا Build به دانلود
 # frontend از Docker Hub وابسته نباشد (مناسب محیط‌های محدود شبکه).
+#
+# MPP: Java Runtime + version-pinned MPXJ Helper Jar داخل Image.
 # ==========================================================================
+
+# --- مرحله ساخت Helper Jar (Java 21 + Maven، نسخه‌های Pin‌شده) ---
+FROM maven:3.9.9-eclipse-temurin-21 AS mpp-helper-build
+WORKDIR /mpp
+COPY apps/api/mpp-helper/pom.xml ./pom.xml
+COPY apps/api/mpp-helper/src ./src
+RUN mvn -B -DskipTests package \
+    && test -f /mpp/target/mpxj-helper.jar
 
 FROM node:24-alpine AS base
 ENV PNPM_HOME=/pnpm
@@ -13,7 +23,7 @@ RUN corepack enable
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
-# --- مرحله ساخت ---
+# --- مرحله ساخت NestJS ---
 FROM base AS build
 ARG APP_VERSION=0.0.0
 ARG GIT_SHA=unknown
@@ -55,18 +65,27 @@ LABEL org.opencontainers.image.title="ppm-api" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.version="${APP_VERSION}"
 
+# OpenJDK 21 JRE — Pin‌شده روی پکیج Alpine (نه دانلود latest شناور)
+RUN apk add --no-cache openjdk21-jre-headless \
+    && java -version
+
 ENV NODE_ENV=production
 ENV APP_VERSION=$APP_VERSION
 ENV GIT_SHA=$GIT_SHA
 ENV BUILD_DATE=$BUILD_DATE
+ENV MPXJ_HELPER_JAR=/app/mpp/mpxj-helper.jar
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk
 WORKDIR /app
 
 COPY --from=build /app/deploy ./
 COPY --from=build /app/apps/api/prisma ./prisma
+COPY --from=mpp-helper-build /mpp/target/mpxj-helper.jar /app/mpp/mpxj-helper.jar
 COPY --chmod=0755 infrastructure/scripts/api-entrypoint.sh /usr/local/bin/api-entrypoint.sh
 
-# اجرای سرویس با کاربر غیر root
-RUN mkdir -p /app/uploads /tmp/ppm-import && chown -R node:node /app /tmp/ppm-import
+RUN test -f /app/mpp/mpxj-helper.jar \
+    && mkdir -p /app/uploads /tmp/ppm-import \
+    && chown -R node:node /app /tmp/ppm-import
+
 USER node
 
 EXPOSE 4000
