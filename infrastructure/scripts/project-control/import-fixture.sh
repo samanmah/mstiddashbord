@@ -14,9 +14,11 @@ COOKIE_JAR="$(mktemp)"
 ENABLE_BODY=""
 ENABLE_HEADERS=""
 cleanup_import_temps() {
-  rm -f "$COOKIE_JAR"
-  [[ -n "${ENABLE_BODY:-}" ]] && rm -f "$ENABLE_BODY"
-  [[ -n "${ENABLE_HEADERS:-}" ]] && rm -f "$ENABLE_HEADERS"
+  # هرگز از EXIT trap وضعیت غیرصفر برنگردان (وگرنه exit 0 اسکریپت ۱ می‌شود).
+  set +e
+  rm -f "${COOKIE_JAR:-}" "${ENABLE_BODY:-}" "${ENABLE_HEADERS:-}"
+  set -e
+  return 0
 }
 trap cleanup_import_temps EXIT
 
@@ -176,6 +178,8 @@ log "Manifest dry-run OK"
 
 if [[ "$DRY_RUN_ONLY" == "1" ]]; then
   log "فقط Dry-Run درخواست شده بود."
+  cleanup_import_temps
+  trap - EXIT
   exit 0
 fi
 
@@ -202,5 +206,7 @@ printf '%s' "$DASH" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process
   || die "Dashboard Aggregation هفت فاز را برنگرداند."
 
 echo "$PROJECT_ID" >"$ROOT_DIR/artifacts/project-control/staging-project-id.txt"
+cleanup_import_temps
+trap - EXIT
 log "Import Fixture PASSED — project=${PROJECT_ID}"
 exit 0

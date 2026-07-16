@@ -55,6 +55,8 @@ elif [[ "$(uname -s)" == "Darwin" ]]; then
   log "Memory: macOS (free CLI absent) — skipped numeric check"
 fi
 
+# Java stub روی macOS ممکن است exit≠0 بدهد؛ فقط best-effort لاگ می‌کنیم.
+
 # Ports (Staging)
 for p in 18080 18443 15432; do
   if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1; then
@@ -81,7 +83,12 @@ fi
 
 # Java / MPXJ (اختیاری برای Excel-only) — نبود Java نباید Preflight را Fail کند
 if command -v java >/dev/null 2>&1; then
-  log "Java: $(java -version 2>&1 | head -1)"
+  JAVA_VER="$(java -version 2>&1 | head -1 || true)"
+  if [[ -n "$JAVA_VER" && "$JAVA_VER" != *"Unable to locate a Java Runtime"* ]]; then
+    log "Java: ${JAVA_VER}"
+  else
+    warn "Java CLI موجود است اما Runtime نصب نیست — Import MPP محدود؛ Excel مجاز است."
+  fi
 else
   warn "Java یافت نشد — Import MPP در Staging محدود می‌شود؛ Excel مستقل مجاز است."
 fi

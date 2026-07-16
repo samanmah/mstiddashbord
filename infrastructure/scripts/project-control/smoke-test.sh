@@ -39,7 +39,18 @@ check "nginx no 502 on health" bash -c "code=\$(curl -s -o /dev/null -w '%{http_
 
 LIVE="$(curl -fsS "${API}/health/liveness")"
 check "health liveness has version" bash -c "printf '%s' '$LIVE' | grep -q version"
-check "health readiness" curl -fsS "${API}/health/readiness" >/dev/null
+api_ok() {
+  # curl را داخل تابع صدا بزن تا >/dev/null خروجی log تابع check را نبلعد.
+  local url="$1"
+  local csrf="${2:-}"
+  if [[ -n "$csrf" ]]; then
+    curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${csrf}" "$url" >/dev/null
+  else
+    curl -fsS "$url" >/dev/null
+  fi
+}
+
+check "health readiness" api_ok "${API}/health/readiness"
 
 csrf_login() {
   local user="$1" pass="$2"
@@ -74,42 +85,29 @@ printf '%s' "$PROJECT_JSON" | EXPECTED_PROJECT_ID="$PROJECT_ID" node --input-typ
     }
   });
 ' || die "قرارداد Smoke برای Fixture نقض شد (بدون fallback به پروژه اول)."
+log "OK  fixture project contract (STG-PC-001, control enabled)"
 
-check "legacy dashboard (fixture)" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/dashboard" >/dev/null
-check "risks" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/risks" >/dev/null
-check "decisions" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/decisions" >/dev/null
+check "legacy dashboard (fixture)" api_ok "${API}/projects/${PROJECT_ID}/dashboard" "$CSRF"
+check "risks" api_ok "${API}/projects/${PROJECT_ID}/risks" "$CSRF"
+check "decisions" api_ok "${API}/projects/${PROJECT_ID}/decisions" "$CSRF"
 
 # Advanced Project Control — الزامی برای Fixture فعال
-check "control plan" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/plan" >/dev/null
-check "control dashboard / overview" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/dashboard" >/dev/null
-check "wbs tree" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/wbs" >/dev/null
-check "gantt" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/gantt" >/dev/null
-check "s-curve analytics" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/analytics/s-curve" >/dev/null
-check "phase-rollup analytics" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/analytics/phase-rollup" >/dev/null
-check "critical-path" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/analytics/critical-path" >/dev/null
-check "data-quality" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/analytics/data-quality" >/dev/null
-check "imports list" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/imports" >/dev/null
+check "control plan" api_ok "${API}/projects/${PROJECT_ID}/control/plan" "$CSRF"
+check "control dashboard / overview" api_ok "${API}/projects/${PROJECT_ID}/control/dashboard" "$CSRF"
+check "wbs tree" api_ok "${API}/projects/${PROJECT_ID}/control/wbs" "$CSRF"
+check "gantt" api_ok "${API}/projects/${PROJECT_ID}/control/gantt" "$CSRF"
+check "s-curve analytics" api_ok "${API}/projects/${PROJECT_ID}/control/analytics/s-curve" "$CSRF"
+check "phase-rollup analytics" api_ok "${API}/projects/${PROJECT_ID}/control/analytics/phase-rollup" "$CSRF"
+check "critical-path" api_ok "${API}/projects/${PROJECT_ID}/control/analytics/critical-path" "$CSRF"
+check "data-quality" api_ok "${API}/projects/${PROJECT_ID}/control/analytics/data-quality" "$CSRF"
+check "imports list" api_ok "${API}/projects/${PROJECT_ID}/control/imports" "$CSRF"
 
 rm -f "$COOKIE_JAR"
 COOKIE_JAR="$(mktemp)"
 CSRF_V="$(csrf_login "$VIEWER_USER" "$VIEWER_PASS")"
 check "login viewer" bash -c "[[ -n '$CSRF_V' ]]"
-check "viewer control dashboard" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF_V}" \
-  "${API}/projects/${PROJECT_ID}/control/dashboard" >/dev/null
-check "viewer legacy dashboard" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF_V}" \
-  "${API}/projects/${PROJECT_ID}/dashboard" >/dev/null
+check "viewer control dashboard" api_ok "${API}/projects/${PROJECT_ID}/control/dashboard" "$CSRF_V"
+check "viewer legacy dashboard" api_ok "${API}/projects/${PROJECT_ID}/dashboard" "$CSRF_V"
 
 # Migration pending
 STATUS="$(docker exec ppm_pc_staging_api node node_modules/prisma/build/index.js migrate status 2>&1 || true)"
