@@ -43,6 +43,8 @@ export function mapProject(p: Project): ProjectDto {
     isActive: p.isActive,
     displayOrder: p.displayOrder,
     version: p.version,
+    projectControlEnabled: p.projectControlEnabled,
+    activeControlPlanId: p.activeControlPlanId,
     createdAt: isoDate(p.createdAt),
     updatedAt: isoDate(p.updatedAt),
   };

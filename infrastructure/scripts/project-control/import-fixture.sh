@@ -11,7 +11,14 @@ has_flag --dry-run "$@" && DRY_RUN_ONLY=1
 BASE_URL="${STAGING_URL:-http://127.0.0.1:18080}"
 API="${BASE_URL}/api/v1"
 COOKIE_JAR="$(mktemp)"
-trap 'rm -f "$COOKIE_JAR"' EXIT
+ENABLE_BODY=""
+ENABLE_HEADERS=""
+cleanup_import_temps() {
+  rm -f "$COOKIE_JAR"
+  [[ -n "${ENABLE_BODY:-}" ]] && rm -f "$ENABLE_BODY"
+  [[ -n "${ENABLE_HEADERS:-}" ]] && rm -f "$ENABLE_HEADERS"
+}
+trap cleanup_import_temps EXIT
 
 # shellcheck disable=SC1091
 [[ -f "$ROOT_DIR/.env.staging" ]] && { set -a; source "$ROOT_DIR/.env.staging"; set +a; }
@@ -100,12 +107,45 @@ printf '%s' "$PROJECT_JSON" | EXPECTED_PROJECT_ID="$PROJECT_ID" node --input-typ
 ' || die "Assert قرارداد پروژه Fixture پس از GET شکست خورد."
 log "ProjectId=${PROJECT_ID} projectCode=STG-PC-001 titleFa=Staging Control Project"
 
-log "Enable Project Control (idempotent)..."
-curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" \
+log "Enable Project Control..."
+ENABLE_BODY="$(mktemp)"
+ENABLE_HEADERS="$(mktemp)"
+set +e
+ENABLE_HTTP="$(curl -sS -o "$ENABLE_BODY" -D "$ENABLE_HEADERS" -w '%{http_code}' \
+  -c "$COOKIE_JAR" -b "$COOKIE_JAR" \
   -H "Content-Type: application/json" -H "X-CSRF-Token: ${CSRF}" \
   -X POST "${API}/projects/${PROJECT_ID}/control/enable" \
-  -d '{"title":"Staging Control Plan","statusDate":"1405/04/25"}' >/dev/null \
-  || log "Enable ممکن است قبلاً انجام شده باشد — ادامه."
+  -d '{"title":"Staging Control Plan","statusDate":"1405/04/25"}')"
+ENABLE_CURL_RC=$?
+set -e
+[[ "$ENABLE_CURL_RC" -eq 0 ]] || die "Enable: درخواست HTTP شکست خورد (curl exit=${ENABLE_CURL_RC})."
+
+ENABLE_CLASSIFY="$(ENABLE_HTTP="$ENABLE_HTTP" node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  import { classifyEnableControlResponse } from "./infrastructure/scripts/project-control/classify-enable-response.mjs";
+  const status = Number(process.env.ENABLE_HTTP);
+  let body = null;
+  try { body = JSON.parse(readFileSync(process.argv[1], "utf8")); } catch { body = null; }
+  const result = classifyEnableControlResponse(status, body);
+  process.stdout.write(JSON.stringify(result));
+' "$ENABLE_BODY")" || die "Enable: طبقه‌بندی پاسخ شکست خورد."
+
+ENABLE_OK="$(printf '%s' "$ENABLE_CLASSIFY" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(d).ok)))')"
+ENABLE_KIND="$(printf '%s' "$ENABLE_CLASSIFY" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(d).kind||"")))')"
+if [[ "$ENABLE_OK" != "true" ]]; then
+  ENABLE_ERR_STATUS="$(printf '%s' "$ENABLE_CLASSIFY" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(d).status||"")))')"
+  ENABLE_ERR_CODE="$(printf '%s' "$ENABLE_CLASSIFY" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(d).code||"")))')"
+  ENABLE_ERR_MSG="$(printf '%s' "$ENABLE_CLASSIFY" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(d).message||"")))')"
+  die "Enable شکست خورد: status=${ENABLE_ERR_STATUS} code=${ENABLE_ERR_CODE} message=${ENABLE_ERR_MSG}"
+fi
+if [[ "$ENABLE_KIND" == "already-enabled" ]]; then
+  log "Enable: Conflict شناخته‌شده — کنترل پروژه قبلاً فعال بود؛ ادامه."
+else
+  log "Enable: موفق (HTTP ${ENABLE_HTTP})."
+fi
+rm -f "$ENABLE_BODY" "$ENABLE_HEADERS"
+ENABLE_BODY=""
+ENABLE_HEADERS=""
 
 log "Copy fixture into API container..."
 docker cp "$FIXTURE" ppm_pc_staging_api:/tmp/ppm-import/gantt-fixture.xlsx

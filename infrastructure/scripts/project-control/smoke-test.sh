@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke Test روی Staging واقعی.
+# Smoke Test روی Staging واقعی — فقط Fixture deterministic (STG-PC-001).
 set -Eeuo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/_common.sh"
 
@@ -52,45 +52,63 @@ csrf_login() {
 CSRF="$(csrf_login "$EDITOR_USER" "$EDITOR_PASS")"
 check "login editor" bash -c "[[ -n '$CSRF' ]]"
 
-PROJECTS="$(curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" "${API}/projects")"
-PROJECT_ID="$(printf '%s' "$PROJECTS" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{const a=JSON.parse(d);process.stdout.write(a[0]?.id||"")})')"
-[[ -n "$PROJECT_ID" ]] || die "پروژه‌ای برای Smoke یافت نشد."
+ARTIFACT_FILE="$ROOT_DIR/artifacts/project-control/staging-project-id.txt"
+[[ -f "$ARTIFACT_FILE" ]] || die "Artifact یافت نشد: ${ARTIFACT_FILE}"
+PROJECT_ID="$(node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  import { readFixtureProjectIdFromArtifact } from "./infrastructure/scripts/project-control/smoke-fixture-project.mjs";
+  process.stdout.write(readFixtureProjectIdFromArtifact(readFileSync(process.argv[1], "utf8")));
+' "$ARTIFACT_FILE")" || die "خواندن Artifact project ID شکست خورد."
+log "Smoke fixture projectId=${PROJECT_ID}"
 
-check "legacy dashboard" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+PROJECT_JSON="$(curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}")"
+printf '%s' "$PROJECT_JSON" | EXPECTED_PROJECT_ID="$PROJECT_ID" node --input-type=module -e '
+  import { assertSmokeFixtureProject } from "./infrastructure/scripts/project-control/smoke-fixture-project.mjs";
+  let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
+    try {
+      assertSmokeFixtureProject(JSON.parse(d), process.env.EXPECTED_PROJECT_ID);
+    } catch (e) {
+      console.error(String(e && e.message ? e.message : e));
+      process.exit(2);
+    }
+  });
+' || die "قرارداد Smoke برای Fixture نقض شد (بدون fallback به پروژه اول)."
+
+check "legacy dashboard (fixture)" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
   "${API}/projects/${PROJECT_ID}/dashboard" >/dev/null
 check "risks" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
   "${API}/projects/${PROJECT_ID}/risks" >/dev/null
 check "decisions" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
   "${API}/projects/${PROJECT_ID}/decisions" >/dev/null
 
-PLAN="$(curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-  "${API}/projects/${PROJECT_ID}/control/plan" || true)"
-if [[ "$PLAN" != "null" && -n "$PLAN" ]]; then
-  check "control dashboard" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-    "${API}/projects/${PROJECT_ID}/control/dashboard" >/dev/null
-  check "wbs" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-    "${API}/projects/${PROJECT_ID}/control/wbs" >/dev/null
-  check "gantt" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-    "${API}/projects/${PROJECT_ID}/control/gantt" >/dev/null
-  check "s-curve" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-    "${API}/projects/${PROJECT_ID}/control/analytics/s-curve" >/dev/null
-  check "phase-rollup" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-    "${API}/projects/${PROJECT_ID}/control/analytics/phase-rollup" >/dev/null
-  check "critical-path" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-    "${API}/projects/${PROJECT_ID}/control/analytics/critical-path" >/dev/null
-  check "data-quality" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-    "${API}/projects/${PROJECT_ID}/control/analytics/data-quality" >/dev/null
-  check "imports list" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
-    "${API}/projects/${PROJECT_ID}/control/imports" >/dev/null
-else
-  log "Project Control غیرفعال است — فقط Dashboard قدیمی Smoke شد."
-fi
+# Advanced Project Control — الزامی برای Fixture فعال
+check "control plan" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}/control/plan" >/dev/null
+check "control dashboard / overview" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}/control/dashboard" >/dev/null
+check "wbs tree" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}/control/wbs" >/dev/null
+check "gantt" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}/control/gantt" >/dev/null
+check "s-curve analytics" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}/control/analytics/s-curve" >/dev/null
+check "phase-rollup analytics" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}/control/analytics/phase-rollup" >/dev/null
+check "critical-path" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}/control/analytics/critical-path" >/dev/null
+check "data-quality" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}/control/analytics/data-quality" >/dev/null
+check "imports list" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}/control/imports" >/dev/null
 
 rm -f "$COOKIE_JAR"
 COOKIE_JAR="$(mktemp)"
 CSRF_V="$(csrf_login "$VIEWER_USER" "$VIEWER_PASS")"
 check "login viewer" bash -c "[[ -n '$CSRF_V' ]]"
-check "viewer dashboard" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF_V}" \
+check "viewer control dashboard" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF_V}" \
+  "${API}/projects/${PROJECT_ID}/control/dashboard" >/dev/null
+check "viewer legacy dashboard" curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF_V}" \
   "${API}/projects/${PROJECT_ID}/dashboard" >/dev/null
 
 # Migration pending

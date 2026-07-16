@@ -34,6 +34,10 @@ export interface ProjectDto {
   isActive: boolean;
   displayOrder: number;
   version: number;
+  /** آیا کنترل پروژه پیشرفته فعال است. */
+  projectControlEnabled: boolean;
+  /** شناسه برنامهٔ کنترل فعال؛ null اگر غیرفعال. */
+  activeControlPlanId: string | null;
   createdAt: string;
   updatedAt: string;
 }

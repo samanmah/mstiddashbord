@@ -28,21 +28,14 @@ test.describe('کنترل پروژه — Editor مسیر اصلی', () => {
   test('۲) فعال‌سازی یا ورود به Control Overview', async ({ page }) => {
     const projectId = getFixtureProjectId();
     await assertFixtureProject(page.request, projectId);
-    await page.goto(`/admin/projects/${projectId}/control`);
+    const overviewPath = `/admin/projects/${projectId}/control/overview`;
+    await page.goto(overviewPath);
     await assertAuthMe(page, 'editor');
-    await expect(page).toHaveURL(new RegExp(`/admin/projects/${projectId}/control`), {
-      timeout: 15_000,
-    });
-
-    const enableBtn = page.getByRole('button', { name: /فعال‌سازی کنترل پروژه/ });
-    if (await enableBtn.count()) {
-      await enableBtn.click();
-      const confirm = page.getByRole('button', { name: /تأیید|فعال‌سازی|بله/ });
-      if (await confirm.count()) await confirm.click();
-    }
-
-    await expect(page.getByTestId('control-tabs')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId('control-tab-overview')).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/admin/projects/${projectId}/control/overview$`));
+    await expect(page.getByTestId('control-tabs')).toBeVisible();
+    const overviewTab = page.getByTestId('control-tab-overview');
+    await expect(overviewTab).toBeVisible();
+    await expect(overviewTab).toHaveAttribute('href', overviewPath);
   });
 
   test('۳) WBS: Expand/Collapse و وجود درخت', async ({ page }) => {
