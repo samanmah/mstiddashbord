@@ -10,6 +10,8 @@ has_flag --dry-run "$@" && DRY_RUN=1
 log "=== Preflight Advanced Project Control ==="
 log "ROOT=${ROOT_DIR}"
 
+warn() { printf '[%s] WARN: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
+
 require_cmd git
 require_cmd docker
 require_cmd curl
@@ -18,12 +20,18 @@ require_cmd free || true
 
 COMMIT="$(current_commit)"
 SHORT="$(current_commit_short)"
-BRANCH="$(git -C "$ROOT_DIR" branch --show-current)"
-log "Branch=${BRANCH}"
+BRANCH="$(git -C "$ROOT_DIR" branch --show-current || true)"
+if [[ -z "$BRANCH" ]]; then
+  # Detached HEAD در Worktree Release یک حالت معتبر است.
+  log "Branch=(detached HEAD) — معتبر برای Release Worktree"
+else
+  log "Branch=${BRANCH}"
+fi
 log "Commit=${COMMIT} (short=${SHORT})"
 
-[[ "$BRANCH" == "feature/advanced-project-control-wbs-gantt" ]] \
-  || err "هشدار: Branch مورد انتظار feature/advanced-project-control-wbs-gantt نیست."
+if [[ -n "$BRANCH" && "$BRANCH" != "feature/advanced-project-control-wbs-gantt" ]]; then
+  warn "Branch مورد انتظار feature/advanced-project-control-wbs-gantt نیست (فعلی: ${BRANCH})."
+fi
 
 if working_tree_clean; then
   log "Working tree: CLEAN"
@@ -50,7 +58,7 @@ fi
 # Ports (Staging)
 for p in 18080 18443 15432; do
   if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1; then
-    err "هشدار: پورت ${p} در حال استفاده است (ممکن است Staging قبلی باشد)."
+    warn "پورت ${p} در حال استفاده است (ممکن است Staging قبلی باشد)."
   else
     log "Port ${p}: free (or uncheckable)"
   fi
@@ -68,14 +76,14 @@ if [[ -f "$ROOT_DIR/.env.staging" ]]; then
   [[ "${API_IMAGE:-}" != *":latest" ]] || die "API_IMAGE نباید latest باشد."
   [[ "${WEB_IMAGE:-}" != *":latest" ]] || die "WEB_IMAGE نباید latest باشد."
 else
-  err "هشدار: .env.staging وجود ندارد — قبل از deploy-staging بسازید."
+  warn ".env.staging وجود ندارد — قبل از deploy-staging بسازید."
 fi
 
-# Java / MPXJ (اختیاری برای Excel-only)
+# Java / MPXJ (اختیاری برای Excel-only) — نبود Java نباید Preflight را Fail کند
 if command -v java >/dev/null 2>&1; then
   log "Java: $(java -version 2>&1 | head -1)"
 else
-  err "هشدار: Java یافت نشد — Import MPP در Staging محدود می‌شود؛ Excel مستقل مجاز است."
+  warn "Java یافت نشد — Import MPP در Staging محدود می‌شود؛ Excel مستقل مجاز است."
 fi
 
 # Current containers (اطلاعاتی)
@@ -96,7 +104,7 @@ if docker ps --format '{{.Names}}' | grep -q 'ppm_pc_staging_postgres'; then
     || die "PostgreSQL Staging آماده نیست."
   PG_VER="$(docker exec ppm_pc_staging_postgres postgres --version || true)"
   log "PostgreSQL version: ${PG_VER}"
-  echo "$PG_VER" | grep -q '18' || err "هشدار: نسخه PostgreSQL 18 تأیید نشد."
+  echo "$PG_VER" | grep -q '18' || warn "نسخه PostgreSQL 18 تأیید نشد."
 else
   log "Staging postgres هنوز بالا نیست (طبیعی قبل از deploy)."
 fi

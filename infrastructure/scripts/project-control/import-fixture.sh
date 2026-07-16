@@ -20,8 +20,22 @@ EDITOR_USER="${SEED_EDITOR_USERNAME:-editor}"
 EDITOR_PASS="${SEED_EDITOR_PASSWORD:-}"
 [[ -n "$EDITOR_PASS" ]] || die "SEED_EDITOR_PASSWORD تنظیم نشده (از .env.staging)."
 
+# آماده‌سازی Artifact روی Host — وابسته به باقیمانده CI/Docker نیست.
+require_cmd pnpm
+require_cmd node
+[[ -d "$ROOT_DIR/node_modules" ]] \
+  || die "node_modules یافت نشد. ابتدا CI=true pnpm install --frozen-lockfile را اجرا کنید (اسکریپت Dependency نصب نمی‌کند)."
+
+log "Building contracts"
+pnpm --filter @ppm/contracts build
+
+log "Generating Prisma client"
+pnpm --filter @ppm/api prisma:generate
+
+log "Building API"
+pnpm --filter @ppm/api build
+
 log "Generating sanitized fixture..."
-pnpm --filter @ppm/api build >/dev/null
 node "$ROOT_DIR/infrastructure/scripts/project-control/generate-fixture.mjs"
 FIXTURE="$ROOT_DIR/artifacts/project-control/gantt-fixture.xlsx"
 [[ -f "$FIXTURE" ]] || die "Fixture تولید نشد."
