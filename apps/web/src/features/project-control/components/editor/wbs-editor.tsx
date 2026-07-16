@@ -250,7 +250,7 @@ export function WbsEditor({
   const selectedNodes = nodes.filter((n) => selection.has(n.id));
 
   return (
-    <div className="space-y-3">
+    <div data-testid="wbs-editor" className="space-y-3">
       {/* Toolbar */}
       <div className="card flex flex-wrap items-center gap-2 p-3">
         <Input

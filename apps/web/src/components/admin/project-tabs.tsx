@@ -40,6 +40,7 @@ export function ProjectTabs({ projectId }: { projectId: string }): React.JSX.Ele
       {isEditor ? (
         <Link
           href={`/admin/projects/${projectId}/control`}
+          data-testid="project-control-tab"
           className={cn(
             '-mb-px border-b-2 px-4 py-2 text-sm transition-colors',
             pathname.startsWith(`/admin/projects/${projectId}/control`)

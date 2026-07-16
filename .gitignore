@@ -35,6 +35,7 @@ coverage/
 playwright-report/
 test-results/
 apps/web/playwright/.auth/
+apps/web/e2e/.auth/
 
 # Uploads (user files must not be committed)
 uploads/

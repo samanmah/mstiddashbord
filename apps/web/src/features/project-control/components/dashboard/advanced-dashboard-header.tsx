@@ -6,12 +6,18 @@ import {
   GitBranch,
   Hash,
   Landmark,
+  LogOut,
   Maximize2,
   Minimize2,
   MonitorPlay,
   Printer,
   RefreshCw,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { useAuth } from '@/hooks/use-auth';
+import { authService } from '@/lib/services';
 import { faNumber, isoToJalaliFa, orDash } from '@/lib/utils';
 import type { ControlDashboard } from '../../api/project-control-types';
 import { jalaliFa } from '../../utils/date-format';
@@ -38,7 +44,21 @@ export function AdvancedDashboardHeader({
   onToggleWallboard,
   onRefresh,
 }: Props): React.JSX.Element {
+  const router = useRouter();
+  const { clear } = useAuth();
   const { project, controlPlan, lastUpdatedAt } = dashboard;
+
+  const logoutMutation = useMutation({
+    mutationFn: authService.logout,
+    onSuccess: () => {
+      clear();
+      router.replace('/login');
+    },
+    onError: () => {
+      clear();
+      router.replace('/login');
+    },
+  });
 
   return (
     <header className="relative overflow-hidden rounded-card bg-gradient-to-bl from-navy-950 via-navy-900 to-navy-800 px-4 py-4 text-white shadow-card ring-1 ring-inset ring-white/10 md:px-6">
@@ -137,6 +157,15 @@ export function AdvancedDashboardHeader({
               آخرین به‌روزرسانی: {isoToJalaliFa(lastUpdatedAt)}
             </span>
           ) : null}
+          <ToolbarButton
+            icon={<LogOut className="h-4 w-4" aria-hidden />}
+            label="خروج"
+            testId="logout-button"
+            onClick={() => {
+              toast.info('در حال خروج…');
+              logoutMutation.mutate();
+            }}
+          />
         </div>
       </div>
     </header>
@@ -188,11 +217,13 @@ function ToolbarButton({
   label,
   onClick,
   variant = 'ghost',
+  testId,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
   variant?: 'ghost' | 'primary';
+  testId?: string;
 }): React.JSX.Element {
   const base =
     'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:ring-offset-1 focus-visible:ring-offset-navy-900';
@@ -201,7 +232,13 @@ function ToolbarButton({
       ? 'bg-accent-blue text-white hover:bg-accent-blue/90'
       : 'bg-white/10 text-white hover:bg-white/20';
   return (
-    <button type="button" onClick={onClick} aria-label={label} className={`${base} ${styles}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      data-testid={testId}
+      className={`${base} ${styles}`}
+    >
       {icon}
       {label}
     </button>

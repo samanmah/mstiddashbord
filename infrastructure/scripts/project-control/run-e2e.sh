@@ -16,6 +16,7 @@ log "E2E base URL=${PLAYWRIGHT_BASE_URL}"
 curl -fsS "${PLAYWRIGHT_BASE_URL}/api/v1/health/liveness" >/dev/null || die "Staging در دسترس نیست."
 
 cd "$ROOT_DIR/apps/web"
-pnpm exec playwright test e2e/project-control.spec.ts e2e/dashboard.spec.ts --reporter=list
+pnpm exec playwright test e2e/project-control.spec.ts e2e/dashboard.spec.ts \
+  --reporter=list --reporter=html
 log "E2E PASSED"
 exit 0

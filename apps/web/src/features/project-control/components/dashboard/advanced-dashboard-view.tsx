@@ -165,6 +165,7 @@ export function AdvancedDashboardView({ projectId }: { projectId: string }): Rea
 
   return (
     <div
+      data-testid="advanced-dashboard"
       className={cn(
         'mx-auto max-w-[1600px] space-y-4 p-3 md:p-5',
         (isFullscreen || isWallboard) && 'max-w-none',

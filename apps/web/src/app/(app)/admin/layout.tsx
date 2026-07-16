@@ -28,8 +28,11 @@ export default function AdminLayout({ children }: { children: ReactNode }): Reac
 
   return (
     <AuthGuard requireRole={UserRole.PROJECT_EDITOR}>
-      <div className="flex min-h-screen bg-page">
-        <aside className="no-print sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-l border-borderx bg-navy-900 text-white md:flex">
+      <div data-testid="admin-shell" className="flex min-h-screen bg-page">
+        <aside
+          data-testid="admin-nav"
+          className="no-print sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-l border-borderx bg-navy-900 text-white md:flex"
+        >
           <div className="flex items-center gap-2 border-b border-white/10 px-4 py-4">
             <ClipboardList className="h-6 w-6 text-brand-yellow" aria-hidden />
             <div>

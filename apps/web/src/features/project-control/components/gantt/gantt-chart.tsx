@@ -293,6 +293,7 @@ export function GanttChart({
   return (
     <div
       ref={wrapperRef}
+      data-testid="gantt-chart"
       className={cn('flex flex-col gap-2 bg-white', isFullscreen && 'h-screen p-3')}
     >
       {/* راهنمای موبایل */}
@@ -889,6 +890,7 @@ function ZoomButtons({
         <button
           key={o.value}
           type="button"
+          aria-label={o.label}
           onClick={() => onChange(o.value)}
           className={cn(
             'px-2.5 py-1 transition-colors',

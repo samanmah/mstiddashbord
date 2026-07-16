@@ -28,7 +28,10 @@ import {
 export function ExecutiveKpis({ kpis }: { kpis: ControlExecutiveKpis }): React.JSX.Element {
   const varTone = varianceTone(kpis.scheduleVariancePercent);
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+    <div
+      data-testid="executive-kpis"
+      className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7"
+    >
       <MetricCard
         label="پیشرفت برنامه‌ای"
         value={formatPercent(kpis.plannedProgress)}

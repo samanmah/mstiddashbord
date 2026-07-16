@@ -148,6 +148,7 @@ export function DashboardHeader({
           <ToolbarButton
             icon={<LogOut className="h-4 w-4" aria-hidden />}
             label="خروج"
+            testId="logout-button"
             onClick={() => {
               toast.info('در حال خروج…');
               logoutMutation.mutate();
@@ -186,11 +187,13 @@ function ToolbarButton({
   label,
   onClick,
   variant = 'ghost',
+  testId,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
   variant?: 'ghost' | 'primary';
+  testId?: string;
 }): React.JSX.Element {
   const base =
     'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:ring-offset-1 focus-visible:ring-offset-navy-900';
@@ -199,7 +202,13 @@ function ToolbarButton({
       ? 'bg-accent-blue text-white hover:bg-accent-blue/90'
       : 'bg-white/10 text-white hover:bg-white/20';
   return (
-    <button type="button" onClick={onClick} aria-label={label} className={`${base} ${styles}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      data-testid={testId}
+      className={`${base} ${styles}`}
+    >
       {icon}
       {label}
     </button>

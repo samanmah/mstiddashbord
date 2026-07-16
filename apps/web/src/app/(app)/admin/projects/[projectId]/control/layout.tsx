@@ -130,7 +130,10 @@ export default function ControlLayout({
         </div>
       </div>
 
-      <nav className="sticky top-0 z-10 -mx-1 overflow-x-auto border-b border-borderx bg-page/95 px-1 backdrop-blur">
+      <nav
+        data-testid="control-tabs"
+        className="sticky top-0 z-10 -mx-1 overflow-x-auto border-b border-borderx bg-page/95 px-1 backdrop-blur"
+      >
         <div className="flex min-w-max gap-1">
           {TABS.map((tab) => {
             const href = `/admin/projects/${projectId}/control/${tab.slug}`;
@@ -139,6 +142,7 @@ export default function ControlLayout({
               <Link
                 key={tab.slug}
                 href={href}
+                data-testid={`control-tab-${tab.slug}`}
                 className={cn(
                   '-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm transition-colors',
                   active

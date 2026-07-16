@@ -168,7 +168,7 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
   const criticalBlock = preview ? preview.criticalCount > 0 || !preview.canCommit : true;
 
   return (
-    <div className="space-y-4">
+    <div data-testid="import-wizard" className="space-y-4">
       <Stepper step={step} />
 
       {/* Step 0: Upload */}

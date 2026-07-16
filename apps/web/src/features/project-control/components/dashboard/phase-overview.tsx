@@ -39,7 +39,10 @@ export function PhaseOverview({
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div
+        data-testid="phase-overview"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      >
         {phases.map((phase) => (
           <PhaseCard
             key={phase.nodeId}
@@ -77,6 +80,7 @@ function PhaseCard({
   return (
     <button
       type="button"
+      data-testid="phase-card"
       onClick={onDrill}
       className="card group flex flex-col gap-3 p-4 text-right transition-shadow hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
       style={{ borderTop: `3px solid ${color}` }}
