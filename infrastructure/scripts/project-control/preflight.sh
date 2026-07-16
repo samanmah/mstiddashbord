@@ -16,7 +16,7 @@ require_cmd git
 require_cmd docker
 require_cmd curl
 require_cmd df
-require_cmd free || true
+# free فقط روی Linux؛ نبودنش روی macOS Fail نیست (پایین بررسی اختیاری می‌شود).
 
 COMMIT="$(current_commit)"
 SHORT="$(current_commit_short)"
