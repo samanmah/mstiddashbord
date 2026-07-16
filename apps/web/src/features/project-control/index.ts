@@ -18,3 +18,7 @@ export { ProgressWorkspace } from './components/editor/progress-workspace';
 export { DataQualityPanel } from './components/editor/data-quality-panel';
 export { EnableControlPanel } from './components/editor/enable-control-panel';
 export { ImportWizard } from './components/import/import-wizard';
+
+export { DashboardRouter } from './components/dashboard/dashboard-router';
+export { AdvancedDashboardView } from './components/dashboard/advanced-dashboard-view';
+export { GanttChart } from './components/gantt/gantt-chart';

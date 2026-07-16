@@ -69,4 +69,13 @@ test.describe('کنترل پروژه پیشرفته - مشاهده‌گر', () =
       page.getByText(/دسترسی|forbidden|۴۰۳|403/i).first(),
     ).toBeVisible({ timeout: 15_000 });
   });
+
+  test('۶) Viewer داشبورد را می‌بیند (پیشرفته یا قدیمی بدون خطا)', async ({ page }) => {
+    await login(page, 'viewer');
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
+    // داشبورد بدون Crash بارگذاری می‌شود؛ عنوان پروژه یا هدر دیده می‌شود
+    await expect(
+      page.getByText(/پیشرفت پروژه|کنترل پروژهٔ پیشرفته|داشبورد/).first(),
+    ).toBeVisible({ timeout: 15_000 });
+  });
 });

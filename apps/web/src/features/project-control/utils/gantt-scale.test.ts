@@ -4,8 +4,10 @@ import {
   createScale,
   dateToX,
   generateTicks,
+  isWeekend,
   jalaliToMs,
   rangeWidth,
+  tickLabelFa,
   xToDate,
 } from './gantt-scale';
 
@@ -54,5 +56,21 @@ describe('gantt-scale', () => {
     for (let i = 1; i < ticks.length; i += 1) {
       expect(ticks[i]!.ms).toBeGreaterThan(ticks[i - 1]!.ms);
     }
+  });
+
+  it('tickLabelFa returns Persian-digit labels per zoom', () => {
+    const ms = jalaliToMs('1405/04/25')!;
+    expect(tickLabelFa(ms, 'day')).toMatch(/[۰-۹]/);
+    expect(tickLabelFa(ms, 'quarter')).toMatch(/[۰-۹]/);
+    // quarter label is a 4-digit year in Persian digits
+    expect(tickLabelFa(ms, 'quarter').length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('isWeekend detects Fridays (Gregorian getDay === 5)', () => {
+    // 2024-01-05 (local) is a Friday; use local constructor to avoid TZ flakiness
+    const friday = new Date(2024, 0, 5).getTime();
+    const monday = new Date(2024, 0, 8).getTime();
+    expect(isWeekend(friday)).toBe(true);
+    expect(isWeekend(monday)).toBe(false);
   });
 });

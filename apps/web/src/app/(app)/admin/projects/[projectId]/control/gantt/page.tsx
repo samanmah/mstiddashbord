@@ -1,14 +1,11 @@
 'use client';
 
-import { GanttChart } from 'lucide-react';
-import { EmptyState } from '@/components/ui/states';
+import { GanttChart } from '@/features/project-control/components/gantt/gantt-chart';
 
-export default function ControlGanttPage(): React.JSX.Element {
-  return (
-    <EmptyState
-      icon={<GanttChart className="h-8 w-8" aria-hidden />}
-      title="گانت تعاملی"
-      description="نمای گانت پیشرفته در Checkpoint بعدی (داشبورد و گانت) اضافه می‌شود."
-    />
-  );
+export default function ControlGanttPage({
+  params,
+}: {
+  params: { projectId: string };
+}): React.JSX.Element {
+  return <GanttChart projectId={params.projectId} mode="editor" />;
 }

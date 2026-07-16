@@ -2,7 +2,7 @@
  * مقیاس زمانی Gantt: تبدیل تاریخ↔پیکسل و تولید Tickها. خالص و قابل‌تست.
  * ورودی تاریخ‌ها به‌صورت رشتهٔ جلالی است و با jalaliStringToDate به Date میلادی تبدیل می‌شود.
  */
-import { jalaliStringToDate } from '@ppm/contracts';
+import { dateToJalaliString, jalaliStringToDate, toPersianDigits } from '@ppm/contracts';
 
 export type GanttZoom = 'day' | 'week' | 'month' | 'quarter';
 
@@ -104,4 +104,19 @@ export function generateTicks(scale: GanttScale): GanttTick[] {
     ticks.push({ ms, x: dateToX(scale, ms) });
   }
   return ticks;
+}
+
+/** برچسب فارسی Tick بر اساس سطح Zoom (روز/ماه/فصل). */
+export function tickLabelFa(ms: number, zoom: GanttZoom): string {
+  const jalali = dateToJalaliString(new Date(ms)); // YYYY/MM/DD
+  const [y, m, d] = jalali.split('/');
+  if (zoom === 'day' || zoom === 'week') return toPersianDigits(`${m}/${d}`);
+  if (zoom === 'month') return toPersianDigits(`${m}/${y!.slice(2)}`);
+  return toPersianDigits(`${y}`);
+}
+
+/** آیا این زمان (ms) آخر هفته (جمعه) است؟ برای پس‌زمینهٔ تعطیلات. */
+export function isWeekend(ms: number): boolean {
+  // جمعه در تقویم میلادی getDay() === 5
+  return new Date(ms).getDay() === 5;
 }
