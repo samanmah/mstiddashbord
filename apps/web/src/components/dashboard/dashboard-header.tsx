@@ -2,11 +2,13 @@
 
 import type { ProjectDto } from '@ppm/contracts';
 import {
-  Building2,
+  BriefcaseBusiness,
+  Hash,
+  Landmark,
   LogOut,
   Maximize2,
   Minimize2,
-  Pencil,
+  PencilLine,
   Printer,
   RefreshCw,
 } from 'lucide-react';
@@ -48,29 +50,52 @@ export function DashboardHeader({
   });
 
   return (
-    <header className="rounded-card bg-navy-900 px-4 py-3 text-white shadow-card md:px-6">
-      <div className="flex flex-col gap-3 md:flex-row-reverse md:items-center md:justify-between">
+    <header className="relative overflow-hidden rounded-card bg-gradient-to-bl from-navy-950 via-navy-900 to-navy-800 px-4 py-4 text-white shadow-card ring-1 ring-inset ring-white/10 md:px-6">
+      {/* Highlight بسیار ظریف آبی در گوشه بالا */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-24 left-1/4 h-48 w-[36rem] rounded-full bg-accent-blue/20 blur-3xl"
+      />
+      <div className="relative flex flex-col gap-4 md:flex-row-reverse md:items-center md:justify-between">
         {/* سمت راست: عناوین */}
         <div className="min-w-0 text-right">
-          <p className="text-xs text-white/70">پیشرفت پروژه استراتژیک</p>
-          <h1 className="truncate text-lg font-bold text-brand-yellow md:text-xl">
+          <p className="text-xs font-medium tracking-wide text-white/70">
+            پیشرفت پروژه استراتژیک
+          </p>
+          <h1 className="truncate text-lg font-extrabold text-brand-yellow md:text-2xl">
             {project.titleFa}
           </h1>
           {project.titleEn ? (
-            <p className="truncate text-sm text-white/80" dir="ltr">
+            <p className="truncate text-sm text-white/60" dir="ltr">
               {project.titleEn}
             </p>
           ) : null}
         </div>
 
         {/* سمت چپ: لوگو و کارت‌ها */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white/10">
-            <Building2 className="h-6 w-6 text-brand-yellow" aria-hidden />
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex h-12 items-center justify-center rounded-xl bg-white px-3 shadow-sm">
+            <img
+              src="/logo-mobarakeh.png"
+              alt="فولاد مبارکه اصفهان"
+              className="h-8 w-auto object-contain"
+            />
           </div>
-          <HeaderStat label="مسئول پروژه" value={orDash(project.projectManager)} />
-          <HeaderStat label="کد پروژه" value={orDash(project.projectCode)} />
           <HeaderStat
+            icon={<BriefcaseBusiness className="h-4 w-4" aria-hidden />}
+            tone="text-accent-sky"
+            label="مسئول پروژه"
+            value={orDash(project.projectManager)}
+          />
+          <HeaderStat
+            icon={<Hash className="h-4 w-4" aria-hidden />}
+            tone="text-accent-violet"
+            label="کد پروژه"
+            value={orDash(project.projectCode)}
+          />
+          <HeaderStat
+            icon={<Landmark className="h-4 w-4" aria-hidden />}
+            tone="text-accent-emerald"
             label="بودجه مصوب"
             value={`${faNumber(project.budgetBillionRial)} میلیارد ریال`}
           />
@@ -78,22 +103,33 @@ export function DashboardHeader({
       </div>
 
       {/* نوار ابزار */}
-      <div className="no-print mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
+      <div className="no-print relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
         <div className="flex flex-wrap items-center gap-1.5">
-          <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} label="تازه‌سازی" onClick={onRefresh} />
           <ToolbarButton
-            icon={isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            icon={<RefreshCw className="h-4 w-4" aria-hidden />}
+            label="تازه‌سازی"
+            onClick={onRefresh}
+          />
+          <ToolbarButton
+            icon={
+              isFullscreen ? (
+                <Minimize2 className="h-4 w-4" aria-hidden />
+              ) : (
+                <Maximize2 className="h-4 w-4" aria-hidden />
+              )
+            }
             label={isFullscreen ? 'خروج از تمام‌صفحه' : 'تمام‌صفحه'}
             onClick={onToggleFullscreen}
           />
           <ToolbarButton
-            icon={<Printer className="h-4 w-4" />}
+            icon={<Printer className="h-4 w-4" aria-hidden />}
             label="چاپ / PDF"
             onClick={() => window.print()}
           />
           {isEditor ? (
             <ToolbarButton
-              icon={<Pencil className="h-4 w-4" />}
+              variant="primary"
+              icon={<PencilLine className="h-4 w-4" aria-hidden />}
               label="ویرایش پروژه"
               onClick={() => router.push(`/admin/projects/${project.id}/general`)}
             />
@@ -101,7 +137,7 @@ export function DashboardHeader({
         </div>
         <div className="flex items-center gap-3">
           {lastSyncedAt ? (
-            <span className="text-[11px] text-white/60">
+            <span className="text-[11px] text-white/55">
               آخرین همگام‌سازی: {isoToJalaliFa(lastSyncedAt)} —{' '}
               {new Date(lastSyncedAt).toLocaleTimeString('fa-IR', {
                 hour: '2-digit',
@@ -110,7 +146,7 @@ export function DashboardHeader({
             </span>
           ) : null}
           <ToolbarButton
-            icon={<LogOut className="h-4 w-4" />}
+            icon={<LogOut className="h-4 w-4" aria-hidden />}
             label="خروج"
             onClick={() => {
               toast.info('در حال خروج…');
@@ -123,11 +159,24 @@ export function DashboardHeader({
   );
 }
 
-function HeaderStat({ label, value }: { label: string; value: string }): React.JSX.Element {
+function HeaderStat({
+  icon,
+  tone,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  tone: string;
+  label: string;
+  value: string;
+}): React.JSX.Element {
   return (
-    <div className="rounded-lg bg-white/10 px-3 py-1.5 text-center">
-      <p className="text-[10px] text-white/60">{label}</p>
-      <p className="text-sm font-bold text-white">{value}</p>
+    <div className="flex items-center gap-2 rounded-xl bg-white/[0.08] px-3 py-1.5 ring-1 ring-inset ring-white/10">
+      <span className={`section-icon bg-white/10 ${tone}`}>{icon}</span>
+      <div className="text-right">
+        <p className="text-[10px] text-white/55">{label}</p>
+        <p className="text-sm font-bold text-white">{value}</p>
+      </div>
     </div>
   );
 }
@@ -136,17 +185,21 @@ function ToolbarButton({
   icon,
   label,
   onClick,
+  variant = 'ghost',
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
+  variant?: 'ghost' | 'primary';
 }): React.JSX.Element {
+  const base =
+    'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow focus-visible:ring-offset-1 focus-visible:ring-offset-navy-900';
+  const styles =
+    variant === 'primary'
+      ? 'bg-accent-blue text-white hover:bg-accent-blue/90'
+      : 'bg-white/10 text-white hover:bg-white/20';
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-yellow"
-    >
+    <button type="button" onClick={onClick} aria-label={label} className={`${base} ${styles}`}>
       {icon}
       {label}
     </button>

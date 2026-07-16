@@ -17,6 +17,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ExportModule } from './modules/export/export.module';
 import { HealthModule } from './modules/health/health.module';
 import { ImportModule } from './modules/import/import.module';
+import { ProjectControlModule } from './modules/project-control/project-control.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -48,6 +49,7 @@ import { UsersModule } from './modules/users/users.module';
     ProjectsModule,
     DashboardModule,
     ImportModule,
+    ProjectControlModule,
     ExportModule,
     HealthModule,
   ],

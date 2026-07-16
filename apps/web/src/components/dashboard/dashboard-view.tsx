@@ -1,6 +1,14 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  BarChart3,
+  CalendarRange,
+  ClipboardCheck,
+  ListChecks,
+  TrendingUp,
+  TriangleAlert,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -81,7 +89,12 @@ export function DashboardView({ projectId }: { projectId: string }): React.JSX.E
   }
 
   return (
-    <div className={cn('mx-auto max-w-[1600px] space-y-3 p-3 md:p-4', isFullscreen && 'max-w-none')}>
+    <div
+      className={cn(
+        'mx-auto max-w-[1600px] space-y-4 p-3 md:p-5',
+        isFullscreen && 'max-w-none',
+      )}
+    >
       <div className="no-print">
         <ProjectSelector currentId={projectId} />
       </div>
@@ -95,44 +108,105 @@ export function DashboardView({ projectId }: { projectId: string }): React.JSX.E
       />
 
       {data.consistency.hasWarning ? (
-        <div className="no-print rounded-card border border-brand-orange/40 bg-brand-orange/10 px-4 py-2 text-sm text-brand-orange">
+        <div className="no-print flex items-center gap-2 rounded-card border border-accent-amber/40 bg-accent-amber/10 px-4 py-2.5 text-sm font-medium text-accent-amber">
+          <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
           اختلاف بین آخرین پیشرفت واقعی ماهانه و پیشرفت واقعی پروژه بیش از حد مجاز است.
         </div>
       ) : null}
 
       {/* ردیف اول */}
-      <div className="grid grid-cols-1 gap-3 print-grid md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 print-grid md:grid-cols-3">
         <ProjectInfoCard project={data.project} />
         <OverallStatusCard summary={data.summary} />
         <IndicatorCard summary={data.indicatorSummary} />
       </div>
 
       {/* ردیف دوم */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Card title="وضعیت پیشرفت فعالیت‌ها" headerTone="orange" bodyClassName="p-0 sm:p-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card
+          title={
+            <SectionTitle icon={<ListChecks className="h-[18px] w-[18px]" aria-hidden />} tone="blue">
+              وضعیت پیشرفت فعالیت‌ها
+            </SectionTitle>
+          }
+          headerTone="navy"
+          className="border-t-2 border-t-accent-blue"
+          bodyClassName="p-0 sm:p-2"
+        >
           <ActivitiesTable activities={data.activities} />
         </Card>
-        <Card title="روند پیشرفت ماهیانه پروژه" headerTone="navy">
+        <Card
+          title={
+            <SectionTitle icon={<TrendingUp className="h-[18px] w-[18px]" aria-hidden />} tone="cyan">
+              روند پیشرفت ماهیانه پروژه
+            </SectionTitle>
+          }
+          headerTone="navy"
+          className="border-t-2 border-t-accent-cyan"
+        >
           <LazyMonthlyLineChart data={data.monthlyProgress} />
         </Card>
       </div>
 
       {/* ردیف سوم */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Card title="تصمیمات جلسات گذشته" headerTone="navy" bodyClassName="p-0 sm:p-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card
+          title={
+            <SectionTitle
+              icon={<ClipboardCheck className="h-[18px] w-[18px]" aria-hidden />}
+              tone="violet"
+            >
+              تصمیمات جلسات گذشته
+            </SectionTitle>
+          }
+          headerTone="navy"
+          className="border-t-2 border-t-accent-violet"
+          bodyClassName="p-0 sm:p-2"
+        >
           <DecisionsTable decisions={data.decisions} />
         </Card>
-        <Card title="چالش‌ها و ریسک‌های بحرانی" headerTone="orange" bodyClassName="p-0 sm:p-2">
+        <Card
+          title={
+            <SectionTitle
+              icon={<TriangleAlert className="h-[18px] w-[18px]" aria-hidden />}
+              tone="red"
+            >
+              چالش‌ها و ریسک‌های بحرانی
+            </SectionTitle>
+          }
+          headerTone="navy"
+          className="border-t-2 border-t-accent-red"
+          bodyClassName="p-0 sm:p-2"
+        >
           <RisksTable risks={data.risks} />
         </Card>
       </div>
 
       {/* ردیف تحلیلی */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Card title="مقایسه برنامه و عملکرد فعالیت‌ها" headerTone="navy">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card
+          title={
+            <SectionTitle icon={<BarChart3 className="h-[18px] w-[18px]" aria-hidden />} tone="emerald">
+              مقایسه برنامه و عملکرد فعالیت‌ها
+            </SectionTitle>
+          }
+          headerTone="navy"
+          className="border-t-2 border-t-accent-emerald"
+        >
           <LazyActivityBarChart data={data.activities} />
         </Card>
-        <Card title="تقویم و مسیر اجرای فعالیت‌ها" headerTone="orange">
+        <Card
+          title={
+            <SectionTitle
+              icon={<CalendarRange className="h-[18px] w-[18px]" aria-hidden />}
+              tone="indigo"
+            >
+              تقویم و مسیر اجرای فعالیت‌ها
+            </SectionTitle>
+          }
+          headerTone="navy"
+          className="border-t-2 border-t-accent-indigo"
+        >
           <LazyActivityTimeline
             activities={data.activities}
             reportDateIso={data.project.reportDate}
@@ -142,6 +216,34 @@ export function DashboardView({ projectId }: { projectId: string }): React.JSX.E
 
       <DashboardLegend />
     </div>
+  );
+}
+
+type AccentTone = 'blue' | 'cyan' | 'violet' | 'red' | 'emerald' | 'indigo';
+
+const sectionIconTone: Record<AccentTone, string> = {
+  blue: 'bg-accent-blue/20 text-white',
+  cyan: 'bg-accent-cyan/25 text-white',
+  violet: 'bg-accent-violet/25 text-white',
+  red: 'bg-accent-red/25 text-white',
+  emerald: 'bg-accent-emerald/25 text-white',
+  indigo: 'bg-accent-indigo/25 text-white',
+};
+
+function SectionTitle({
+  icon,
+  tone,
+  children,
+}: {
+  icon: React.ReactNode;
+  tone: AccentTone;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <span className="flex items-center gap-2">
+      <span className={cn('section-icon', sectionIconTone[tone])}>{icon}</span>
+      {children}
+    </span>
   );
 }
 
@@ -156,11 +258,11 @@ function DashboardLegend(): React.JSX.Element {
     { color: '#9AA6B2', label: 'نامشخص / سایر' },
   ];
   return (
-    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-card bg-white/60 px-4 py-2 text-[11px] text-grayx-header">
+    <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 rounded-card border border-borderx bg-card px-4 py-2.5 text-[11px] font-medium text-grayx-header shadow-card">
       {items.map((item) => (
         <span key={item.label} className="flex items-center gap-1.5">
           <span
-            className="inline-block h-2.5 w-2.5 rounded-full"
+            className="inline-block h-2.5 w-2.5 rounded-full ring-2 ring-inset ring-white/40"
             style={{ backgroundColor: item.color }}
           />
           {item.label}

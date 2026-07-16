@@ -7,19 +7,21 @@
 @tailwind utilities;
 
 :root {
-  --color-navy-900: #17345f;
-  --color-navy-800: #203f70;
-  --color-navy-700: #274a7d;
+  --color-navy-950: #0b1f3a;
+  --color-navy-900: #112f57;
+  --color-navy-800: #173b6c;
+  --color-navy-700: #1e4e8c;
+  --color-primary: #2563eb;
   --color-orange: #f57c00;
   --color-green: #20a55a;
   --color-red: #e53935;
   --color-yellow: #ffd400;
   --color-blue: #2d9cdb;
   --color-purple: #8e5bd9;
-  --color-page-bg: #edf2f8;
+  --color-page-bg: #f3f6fb;
   --color-card-bg: #ffffff;
-  --color-border: #d7e0ea;
-  --color-text: #172b4d;
+  --color-border: #dce4ef;
+  --color-text: #17233c;
 }
 
 @layer base {
@@ -30,6 +32,13 @@
   body {
     @apply bg-page text-ink font-sans antialiased;
     font-feature-settings: 'ss01';
+    /* پس‌زمینه حرفه‌ای: بسیار روشن متمایل به آبی با Radial Gradient بسیار ظریف در بالای صفحه */
+    background-image: radial-gradient(
+      1200px 520px at 50% -10%,
+      rgba(37, 99, 235, 0.08),
+      rgba(37, 99, 235, 0) 70%
+    );
+    background-attachment: fixed;
   }
 
   * {
@@ -48,18 +57,28 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-blue);
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-card border border-borderx bg-card shadow-card;
+    @apply rounded-card border border-borderx bg-card shadow-card transition-shadow duration-200;
+  }
+
+  /* Hover بسیار ظریف فقط برای بهبود عمق بصری، بدون Cursor Pointer */
+  .card:hover {
+    @apply shadow-cardhover;
   }
 
   .card-header {
-    @apply flex items-center justify-between rounded-t-card px-4 py-2.5 text-sm font-bold text-white;
+    @apply flex items-center justify-between gap-2 rounded-t-card px-4 py-3 text-sm font-bold text-white;
+  }
+
+  /* چیپ آیکون رنگی برای سربرگ کارت‌ها و بخش‌ها */
+  .section-icon {
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px];
   }
 
   .btn {
@@ -107,28 +126,54 @@
   }
 
   .data-table {
-    @apply w-full border-collapse text-sm;
+    @apply w-full border-collapse overflow-hidden text-sm;
   }
 
   .data-table thead th {
-    @apply bg-navy-800 px-3 py-2 text-center font-medium text-white;
+    @apply bg-navy-900 px-3 py-2.5 text-center text-xs font-bold text-white/95;
   }
 
   .data-table tbody td {
-    @apply border-b border-borderx px-3 py-2 text-center;
+    @apply border-b border-borderx/70 px-3 py-2.5 text-center text-ink;
   }
 
   .data-table tbody tr:nth-child(even) {
-    @apply bg-page/40;
+    @apply bg-surface;
+  }
+
+  .data-table tbody tr {
+    @apply transition-colors;
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-accent-blue/[0.05];
+  }
+
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
   }
 }
 
-/* Recharts tooltip RTL */
+/* Recharts tooltip — کارت سفید با Shadow و Border ظریف */
 .recharts-default-tooltip {
   direction: rtl;
-  border-radius: 8px !important;
+  border-radius: 12px !important;
   border: 1px solid var(--color-border) !important;
+  box-shadow: 0 8px 30px rgba(15, 35, 65, 0.12) !important;
+  padding: 8px 12px !important;
   font-family: inherit;
+}
+
+/* احترام به prefers-reduced-motion در سطح داشبورد */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ===================== Print / PDF ===================== */

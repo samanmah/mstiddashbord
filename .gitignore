@@ -37,6 +37,16 @@ apps/web/playwright/.auth/
 uploads/
 apps/api/uploads/
 
+# Project control — confidential raw source files must NEVER be committed
+references/project-control/private/
+references/project-control/*.xlsx
+references/project-control/*.xlsm
+references/project-control/*.mpp
+references/project-control/*.mpx
+references/project-control/*.xml
+# Local, non-committed analysis scratch space
+references/project-control/_scratch/
+
 # Database backups
 backups/
 *.dump

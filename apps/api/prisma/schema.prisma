@@ -73,15 +73,15 @@ model User {
 }
 
 model RefreshToken {
-  id                 String    @id @default(uuid()) @db.Uuid
-  userId             String    @db.Uuid
-  tokenHash          String    @unique
-  expiresAt          DateTime
-  revokedAt          DateTime?
-  replacedByTokenId  String?   @db.Uuid
-  ipAddress          String?
-  userAgent          String?
-  createdAt          DateTime  @default(now())
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
+  tokenHash         String    @unique
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  replacedByTokenId String?   @db.Uuid
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -109,16 +109,32 @@ model Project {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  indicators       ProjectIndicator[]
-  monthlyProgress  MonthlyProgress[]
-  activities       Activity[]
-  risks            Risk[]
-  decisions        Decision[]
-  imports          ImportLog[]
-  auditLogs        AuditLog[]
+  // --- Advanced Project Control (additive, feature-flagged) ---
+  projectControlEnabled Boolean   @default(false)
+  activeControlPlanId   String?   @db.Uuid
+  controlStatusDate     DateTime? @db.Date
+  controlCurrency       String?
+  controlVersion        Int       @default(1)
+
+  indicators      ProjectIndicator[]
+  monthlyProgress MonthlyProgress[]
+  activities      Activity[]
+  risks           Risk[]
+  decisions       Decision[]
+  imports         ImportLog[]
+  auditLogs       AuditLog[]
+
+  controlPlans      ProjectControlPlan[]
+  wbsNodes          WbsNode[]
+  taskDependencies  TaskDependency[]
+  progressUpdates   ProgressUpdate[]
+  baselines         ProjectBaseline[]
+  importBatches     ImportBatch[]
+  scheduleSnapshots ProjectScheduleSnapshot[]
 
   @@index([isActive])
   @@index([displayOrder])
+  @@index([projectControlEnabled])
   @@map("projects")
 }
 
@@ -204,11 +220,19 @@ model Risk {
   updatedAt        DateTime    @updatedAt
   deletedAt        DateTime?
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // --- Optional links to project-control hierarchy (additive) ---
+  phaseNodeId String? @db.Uuid
+  wbsNodeId   String? @db.Uuid
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phaseNode WbsNode? @relation("RiskPhaseNode", fields: [phaseNodeId], references: [id], onDelete: SetNull)
+  wbsNode   WbsNode? @relation("RiskWbsNode", fields: [wbsNodeId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([projectId, displayOrder])
   @@index([deletedAt])
+  @@index([phaseNodeId])
+  @@index([wbsNodeId])
   @@map("risks")
 }
 
@@ -226,11 +250,19 @@ model Decision {
   updatedAt    DateTime       @updatedAt
   deletedAt    DateTime?
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // --- Optional links to project-control hierarchy (additive) ---
+  phaseNodeId String? @db.Uuid
+  wbsNodeId   String? @db.Uuid
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phaseNode WbsNode? @relation("DecisionPhaseNode", fields: [phaseNodeId], references: [id], onDelete: SetNull)
+  wbsNode   WbsNode? @relation("DecisionWbsNode", fields: [wbsNodeId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([projectId, displayOrder])
   @@index([deletedAt])
+  @@index([phaseNodeId])
+  @@index([wbsNodeId])
   @@map("decisions")
 }
 
@@ -249,8 +281,8 @@ model ImportLog {
   createdAt        DateTime     @default(now())
   completedAt      DateTime?
 
-  project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  importedBy   User?    @relation("ImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  importedBy User?    @relation("ImportedBy", fields: [importedByUserId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([fileHash])
@@ -280,4 +312,420 @@ model AuditLog {
   @@index([action])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ============================================================================
+// Advanced Project Control — WBS / Gantt / Executive Monitoring (additive)
+// همهٔ مدل‌ها و enumهای زیر جدید و Backward-Compatible هستند.
+// ============================================================================
+
+enum WbsNodeType {
+  PROJECT
+  PHASE
+  BREAK1
+  WORK_PACKAGE
+  SUMMARY_TASK
+  TASK
+  MILESTONE
+  DELIVERABLE
+}
+
+enum WeightSource {
+  EXPLICIT
+  MPP_CUSTOM_FIELD
+  COST_DERIVED
+  DURATION_DERIVED
+  EQUAL_DERIVED
+  NONE
+}
+
+enum DependencyType {
+  FS
+  SS
+  FF
+  SF
+}
+
+enum DependencySource {
+  EXCEL
+  MPP
+  MANUAL
+}
+
+enum AssignmentRole {
+  OWNER
+  RESPONSIBLE
+  ACCOUNTABLE
+  CONSULTED
+  INFORMED
+  REVIEWER
+  APPROVER
+}
+
+enum ControlNodeStatus {
+  NOT_STARTED
+  ON_TRACK
+  AT_RISK
+  DELAYED
+  BLOCKED
+  COMPLETED
+  CANCELLED
+  UNKNOWN
+}
+
+enum ControlPeriodUnit {
+  DAY
+  WEEK
+  MONTH
+  QUARTER
+}
+
+enum ControlImportSourceType {
+  EXCEL
+  MPP
+}
+
+enum ControlImportStatus {
+  UPLOADED
+  PARSING
+  PARSED
+  MAPPING
+  VALIDATED
+  DRY_RUN
+  COMMITTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ImportMatchStatus {
+  UNMATCHED
+  AUTO_MATCHED
+  MANUAL_MATCHED
+  AMBIGUOUS
+  CONFLICT
+  IGNORED
+}
+
+model ProjectControlPlan {
+  id                  String            @id @default(uuid()) @db.Uuid
+  projectId           String            @db.Uuid
+  title               String
+  description         String?
+  statusDate          DateTime          @db.Date
+  scheduleStart       DateTime?         @db.Date
+  scheduleFinish      DateTime?         @db.Date
+  baselineId          String?           @db.Uuid
+  periodUnit          ControlPeriodUnit @default(MONTH)
+  periodCount         Int?
+  totalDurationDays   Int?
+  totalDurationMonths Int?
+  timezone            String            @default("Asia/Tehran")
+  currency            String            @default("IRR")
+  isActive            Boolean           @default(false)
+  version             Int               @default(1)
+  createdByUserId     String?           @db.Uuid
+  updatedByUserId     String?           @db.Uuid
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  project           Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wbsNodes          WbsNode[]
+  dependencies      TaskDependency[]
+  baselines         ProjectBaseline[]
+  importBatches     ImportBatch[]
+  scheduleSnapshots ProjectScheduleSnapshot[]
+
+  @@index([projectId])
+  @@index([projectId, isActive])
+  @@index([statusDate])
+  @@map("project_control_plans")
+}
+
+model WbsNode {
+  id            String  @id @default(uuid()) @db.Uuid
+  projectId     String  @db.Uuid
+  controlPlanId String  @db.Uuid
+  parentId      String? @db.Uuid
+
+  code            String?
+  externalUid     String?
+  sourceRow       Int?
+  sourceFileType  String?
+  sourceFileHash  String?
+  sourceRawTitle  String?
+  title           String
+  normalizedTitle String
+  description     String?
+
+  depth            Int
+  outlineNumber    String?
+  materializedPath String
+  nodeType         WbsNodeType @default(TASK)
+  isSummary        Boolean     @default(false)
+  isMilestone      Boolean     @default(false)
+  isActive         Boolean     @default(true)
+  sortOrder        Int         @default(0)
+
+  plannedStart   DateTime? @db.Date
+  plannedFinish  DateTime? @db.Date
+  actualStart    DateTime? @db.Date
+  actualFinish   DateTime? @db.Date
+  forecastFinish DateTime? @db.Date
+  baselineStart  DateTime? @db.Date
+  baselineFinish DateTime? @db.Date
+  deadline       DateTime? @db.Date
+
+  plannedDurationMinutes   Int?
+  actualDurationMinutes    Int?
+  remainingDurationMinutes Int?
+
+  periodPlanStart      Int?
+  periodPlanDuration   Int?
+  periodActualStart    Int?
+  periodActualDuration Int?
+
+  percentComplete         Float?
+  physicalProgress        Float?
+  plannedProgressOverride Float?
+  financialProgress       Float?
+
+  weight       Float?
+  weightSource WeightSource @default(NONE)
+
+  budgetAmount         Decimal? @db.Decimal(20, 2)
+  mppCost              Decimal? @db.Decimal(20, 2)
+  baselineCost         Decimal? @db.Decimal(20, 2)
+  actualCost           Decimal? @db.Decimal(20, 2)
+  workMinutes          Int?
+  actualWorkMinutes    Int?
+  remainingWorkMinutes Int?
+
+  ownerText        String?
+  definitionOfDone String?
+  notes            String?
+  statusOverride   ControlNodeStatus?
+  constraintType   String?
+  constraintDate   DateTime?          @db.Date
+  calendarName     String?
+
+  version   Int       @default(1)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  project     Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  controlPlan ProjectControlPlan @relation(fields: [controlPlanId], references: [id], onDelete: Cascade)
+  parent      WbsNode?           @relation("WbsNodeHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children    WbsNode[]          @relation("WbsNodeHierarchy")
+
+  assignments            NodeAssignment[]
+  progressUpdates        ProgressUpdate[]
+  baselineSnapshots      BaselineNodeSnapshot[]
+  predecessorLinks       TaskDependency[]       @relation("DependencyPredecessor")
+  successorLinks         TaskDependency[]       @relation("DependencySuccessor")
+  importSourceRecords    ImportSourceRecord[]
+  linkedRisksAsPhase     Risk[]                 @relation("RiskPhaseNode")
+  linkedRisksAsWbs       Risk[]                 @relation("RiskWbsNode")
+  linkedDecisionsAsPhase Decision[]             @relation("DecisionPhaseNode")
+  linkedDecisionsAsWbs   Decision[]             @relation("DecisionWbsNode")
+
+  @@index([projectId])
+  @@index([controlPlanId])
+  @@index([parentId])
+  @@index([controlPlanId, parentId])
+  @@index([controlPlanId, sortOrder])
+  @@index([materializedPath])
+  @@index([nodeType])
+  @@index([externalUid])
+  @@index([deletedAt])
+  @@map("wbs_nodes")
+}
+
+model TaskDependency {
+  id                String           @id @default(uuid()) @db.Uuid
+  projectId         String           @db.Uuid
+  controlPlanId     String           @db.Uuid
+  predecessorNodeId String           @db.Uuid
+  successorNodeId   String           @db.Uuid
+  type              DependencyType   @default(FS)
+  lagMinutes        Int              @default(0)
+  source            DependencySource @default(MANUAL)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  project         Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  controlPlan     ProjectControlPlan @relation(fields: [controlPlanId], references: [id], onDelete: Cascade)
+  predecessorNode WbsNode            @relation("DependencyPredecessor", fields: [predecessorNodeId], references: [id], onDelete: Cascade)
+  successorNode   WbsNode            @relation("DependencySuccessor", fields: [successorNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([predecessorNodeId, successorNodeId, type])
+  @@index([projectId])
+  @@index([controlPlanId])
+  @@index([predecessorNodeId])
+  @@index([successorNodeId])
+  @@map("task_dependencies")
+}
+
+model NodeAssignment {
+  id                   String         @id @default(uuid()) @db.Uuid
+  nodeId               String         @db.Uuid
+  userId               String?        @db.Uuid
+  externalResourceName String?
+  role                 AssignmentRole @default(OWNER)
+  allocationPercent    Float?
+  createdAt            DateTime       @default(now())
+
+  node WbsNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId])
+  @@index([userId])
+  @@map("node_assignments")
+}
+
+model ProgressUpdate {
+  id                       String            @id @default(uuid()) @db.Uuid
+  projectId                String            @db.Uuid
+  nodeId                   String            @db.Uuid
+  reportingDate            DateTime          @db.Date
+  actualPercent            Float
+  physicalProgress         Float?
+  financialProgress        Float?
+  actualCost               Decimal?          @db.Decimal(20, 2)
+  remainingDurationMinutes Int?
+  forecastFinish           DateTime?         @db.Date
+  status                   ControlNodeStatus @default(UNKNOWN)
+  comment                  String?
+  evidenceUrl              String?
+  createdByUserId          String?           @db.Uuid
+  createdAt                DateTime          @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  node    WbsNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([nodeId])
+  @@index([nodeId, reportingDate])
+  @@index([reportingDate])
+  @@map("progress_updates")
+}
+
+model ProjectBaseline {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  controlPlanId   String   @db.Uuid
+  title           String
+  baselineNumber  Int
+  statusDate      DateTime @db.Date
+  isActive        Boolean  @default(false)
+  createdByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+
+  project     Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  controlPlan ProjectControlPlan     @relation(fields: [controlPlanId], references: [id], onDelete: Cascade)
+  snapshots   BaselineNodeSnapshot[]
+
+  @@unique([controlPlanId, baselineNumber])
+  @@index([projectId])
+  @@index([controlPlanId])
+  @@index([controlPlanId, isActive])
+  @@map("project_baselines")
+}
+
+model BaselineNodeSnapshot {
+  id                        String    @id @default(uuid()) @db.Uuid
+  baselineId                String    @db.Uuid
+  nodeId                    String    @db.Uuid
+  plannedStart              DateTime? @db.Date
+  plannedFinish             DateTime? @db.Date
+  plannedDurationMinutes    Int?
+  budgetAmount              Decimal?  @db.Decimal(20, 2)
+  weight                    Float?
+  percentCompleteAtBaseline Float?
+  createdAt                 DateTime  @default(now())
+
+  baseline ProjectBaseline @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  node     WbsNode         @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([baselineId, nodeId])
+  @@index([baselineId])
+  @@index([nodeId])
+  @@map("baseline_node_snapshots")
+}
+
+model ImportBatch {
+  id               String                  @id @default(uuid()) @db.Uuid
+  projectId        String                  @db.Uuid
+  controlPlanId    String?                 @db.Uuid
+  sourceType       ControlImportSourceType
+  originalFilename String
+  fileHash         String
+  parserVersion    String
+  status           ControlImportStatus     @default(UPLOADED)
+  totalRows        Int                     @default(0)
+  importedRows     Int                     @default(0)
+  warningRows      Int                     @default(0)
+  failedRows       Int                     @default(0)
+  validationReport Json?
+  mappingReport    Json?
+  importedByUserId String?                 @db.Uuid
+  createdAt        DateTime                @default(now())
+  completedAt      DateTime?
+
+  project     Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  controlPlan ProjectControlPlan?  @relation(fields: [controlPlanId], references: [id], onDelete: SetNull)
+  records     ImportSourceRecord[]
+
+  @@index([projectId])
+  @@index([controlPlanId])
+  @@index([fileHash])
+  @@index([status])
+  @@index([createdAt])
+  @@map("import_batches")
+}
+
+model ImportSourceRecord {
+  id             String            @id @default(uuid()) @db.Uuid
+  importBatchId  String            @db.Uuid
+  sourceRow      Int
+  sourceUid      String?
+  rawData        Json
+  normalizedData Json
+  matchedNodeId  String?           @db.Uuid
+  matchStatus    ImportMatchStatus @default(UNMATCHED)
+  createdAt      DateTime          @default(now())
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  matchedNode WbsNode?    @relation(fields: [matchedNodeId], references: [id], onDelete: SetNull)
+
+  @@index([importBatchId])
+  @@index([matchedNodeId])
+  @@index([matchStatus])
+  @@map("import_source_records")
+}
+
+model ProjectScheduleSnapshot {
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @db.Uuid
+  controlPlanId    String   @db.Uuid
+  reportingDate    DateTime @db.Date
+  plannedPercent   Float
+  actualPercent    Float
+  physicalPercent  Float
+  financialPercent Float?
+  plannedValue     Decimal? @db.Decimal(20, 2)
+  earnedValue      Decimal? @db.Decimal(20, 2)
+  actualCost       Decimal? @db.Decimal(20, 2)
+  spi              Float?
+  cpi              Float?
+  createdAt        DateTime @default(now())
+
+  project     Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  controlPlan ProjectControlPlan @relation(fields: [controlPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([controlPlanId, reportingDate])
+  @@index([projectId])
+  @@index([controlPlanId])
+  @@index([reportingDate])
+  @@map("project_schedule_snapshots")
 }

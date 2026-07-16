@@ -32,11 +32,15 @@ export function ActivitiesTable({
             const meta = ACTIVITY_STATUS_META[a.effectiveStatus];
             return (
               <tr key={a.id}>
-                <td>{toPersianDigits(idx + 1)}</td>
-                <td className="text-right">{a.title}</td>
-                <td>{faPercent(a.weightPercent)}</td>
-                <td>{faPercent(a.plannedPercent)}</td>
-                <td>{faPercent(a.actualPercent)}</td>
+                <td className="text-grayx-header">{toPersianDigits(idx + 1)}</td>
+                <td className="text-right font-medium">{a.title}</td>
+                <td className="tabular-nums font-semibold">{faPercent(a.weightPercent)}</td>
+                <td className="tabular-nums font-semibold text-accent-blue">
+                  {faPercent(a.plannedPercent)}
+                </td>
+                <td className="tabular-nums font-semibold text-accent-emerald">
+                  {faPercent(a.actualPercent)}
+                </td>
                 <td>
                   <StatusBadge tone={meta.tone} label={meta.label} />
                 </td>
