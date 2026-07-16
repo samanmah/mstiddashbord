@@ -284,7 +284,17 @@ jobs:
           else
             echo "INFO: GHCR_READ_TOKEN unset — falling back to github.token for GHCR pull (len=${#GITHUB_TOKEN_FALLBACK})"
           fi
-          [[ "$missing" -eq 0 ]] || exit 1
+          if [[ "$missing" -ne 0 ]]; then
+            {
+              echo "### Deploy secrets missing"
+              echo "Staging deploy needs these as **Repository secrets** (not only Environment=production):"
+              echo "- SERVER_HOST, SERVER_PORT, SERVER_USER, SERVER_SSH_KEY, DEPLOY_PATH"
+              echo "- Optional: GHCR_READ_TOKEN (else github.token)"
+              echo "- E2E: STAGING_EDITOR_USERNAME/PASSWORD, STAGING_VIEWER_USERNAME/PASSWORD"
+              echo "Server files: /opt/ppm/secrets/.env.staging , /opt/ppm/.env , compose overlays"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
       - name: Fetch commit on server + deploy Staging
         uses: appleboy/ssh-action@v1.2.0
