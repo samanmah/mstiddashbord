@@ -258,62 +258,63 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.full_sha }}
 
-      - name: Prepare SSH
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Sync release scripts to server (exact SHA worktree path will fetch)
+      - name: Assert deploy secrets present (values never logged)
         env:
-          FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
         run: |
           set -euo pipefail
-          PORT="${{ secrets.SERVER_PORT }}"
-          HOST="${{ secrets.SERVER_HOST }}"
-          USER="${{ secrets.SERVER_USER }}"
-          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          ssh -i ~/.ssh/id_deploy -p "$PORT" -o IdentitiesOnly=yes \
-            "${USER}@${HOST}" \
-            "set -euo pipefail
-             git -C '${DEPLOY_PATH}' fetch --prune origin
-             git -C '${DEPLOY_PATH}' cat-file -t '${FULL_SHA}' >/dev/null"
+          missing=0
+          for name in SERVER_HOST SERVER_PORT SERVER_USER SERVER_SSH_KEY DEPLOY_PATH GHCR_READ_TOKEN; do
+            val="${!name}"
+            if [[ -z "$val" ]]; then
+              echo "MISSING secret: $name" >&2
+              missing=1
+            else
+              echo "OK secret: $name (len=${#val})"
+            fi
+          done
+          [[ "$missing" -eq 0 ]] || exit 1
 
-      - name: Deploy Staging over SSH
+      - name: Fetch commit on server + deploy Staging
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          envs: FULL_SHA,API_DIGEST,WEB_DIGEST,DEPLOY_PATH,GHCR_READ_TOKEN
+          script: |
+            set -euo pipefail
+            echo "Remote deploy starting for ${FULL_SHA}"
+            test -n "${FULL_SHA}"
+            test -n "${DEPLOY_PATH}"
+            test -d "${DEPLOY_PATH}/.git"
+            git -C "${DEPLOY_PATH}" fetch --prune origin
+            git -C "${DEPLOY_PATH}" cat-file -t "${FULL_SHA}" >/dev/null
+            WT_ROOT=/opt/ppm/releases/worktrees
+            mkdir -p "${WT_ROOT}"
+            WT="${WT_ROOT}/${FULL_SHA}"
+            if [[ ! -d "${WT}" ]]; then
+              git -C "${DEPLOY_PATH}" worktree add --detach "${WT}" "${FULL_SHA}"
+            fi
+            test -f "${WT}/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
+            chmod +x "${WT}/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
+            export FULL_SHA API_DIGEST WEB_DIGEST DEPLOY_PATH GHCR_READ_TOKEN
+            export GHCR_USERNAME=samanmah
+            export STAGING_ENV_FILE=/opt/ppm/secrets/.env.staging
+            "${WT}/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
         env:
           FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
           API_DIGEST: ${{ needs.build-push.outputs.api_digest }}
           WEB_DIGEST: ${{ needs.build-push.outputs.web_digest }}
-        run: |
-          set -euo pipefail
-          PORT="${{ secrets.SERVER_PORT }}"
-          HOST="${{ secrets.SERVER_HOST }}"
-          USER="${{ secrets.SERVER_USER }}"
-          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          # Secrets هرگز echo نمی‌شوند
-          ssh -i ~/.ssh/id_deploy -p "$PORT" -o IdentitiesOnly=yes \
-            "${USER}@${HOST}" \
-            env FULL_SHA="$FULL_SHA" \
-                API_DIGEST="$API_DIGEST" \
-                WEB_DIGEST="$WEB_DIGEST" \
-                DEPLOY_PATH="$DEPLOY_PATH" \
-                GHCR_READ_TOKEN="${{ secrets.GHCR_READ_TOKEN }}" \
-                GHCR_USERNAME=samanmah \
-                STAGING_ENV_FILE=/opt/ppm/secrets/.env.staging \
-                bash -s <<'REMOTE'
-          set -euo pipefail
-          # Ensure deploy script exists at FULL_SHA via worktree bootstrap from DEPLOY_PATH
-          WT_ROOT=/opt/ppm/releases/worktrees
-          mkdir -p "$WT_ROOT"
-          WT="${WT_ROOT}/${FULL_SHA}"
-          if [[ ! -d "$WT" ]]; then
-            git -C "${DEPLOY_PATH}" worktree add --detach "$WT" "${FULL_SHA}"
-          fi
-          chmod +x "$WT/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
-          "$WT/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
-          REMOTE
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
 
   # ---------------------------------------------------------------------------
   # Smoke Staging
