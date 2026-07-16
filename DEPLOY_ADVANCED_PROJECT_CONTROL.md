@@ -16,12 +16,12 @@
 ## Image Tagهای Release Candidate
 
 ```
-ghcr.io/samanmah/mstiddashbord-api:project-control-f39c712
-ghcr.io/samanmah/mstiddashbord-web:project-control-f39c712
+ghcr.io/samanmah/mstiddashbord-api:project-control-a75655f
+ghcr.io/samanmah/mstiddashbord-web:project-control-a75655f
 ```
 
-Commit مرجع Feature کامل: `f39c712c8355b53960d3813ee5107e3853abe7a`  
-(پس از Commit Release Engineering، SHA جدید را جایگزین کنید.)
+- Feature کامل (Dashboard+Gantt): `f39c712c8355b53960d3813ee5107e3853abe7a`
+- Release Engineering: `a75655f869972b709032c7d54e49c62e07aa8821`
 
 ## مسیر سریع Staging
 
