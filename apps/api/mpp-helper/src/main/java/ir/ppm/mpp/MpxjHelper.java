@@ -9,21 +9,21 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import net.sf.mpxj.Duration;
-import net.sf.mpxj.ProjectFile;
-import net.sf.mpxj.ProjectProperties;
-import net.sf.mpxj.Relation;
-import net.sf.mpxj.RelationType;
-import net.sf.mpxj.Resource;
-import net.sf.mpxj.ResourceAssignment;
-import net.sf.mpxj.Task;
-import net.sf.mpxj.TimeUnit;
-import net.sf.mpxj.reader.UniversalProjectReader;
+import org.mpxj.Duration;
+import org.mpxj.ProjectFile;
+import org.mpxj.ProjectProperties;
+import org.mpxj.Relation;
+import org.mpxj.RelationType;
+import org.mpxj.Resource;
+import org.mpxj.ResourceAssignment;
+import org.mpxj.Task;
+import org.mpxj.TimeUnit;
+import org.mpxj.reader.UniversalProjectReader;
 
 /**
  * CLI: java -jar mpxj-helper.jar --file &lt;path&gt; --format json
  * Output matches packages/contracts MppParseResult.
- * MPXJ version is pinned in pom.xml (16.5.0) — never use floating latest.
+ * MPXJ 16.5.0 package namespace is org.mpxj (pinned in pom.xml).
  */
 public final class MpxjHelper {
   private static final String PARSER_VERSION = "mpxj-adapter-1.0.0";
@@ -118,7 +118,7 @@ public final class MpxjHelper {
         continue;
       }
       for (Relation rel : predecessors) {
-        Task pred = rel == null ? null : rel.getTargetTask();
+        Task pred = rel == null ? null : rel.getPredecessorTask();
         if (pred == null || pred.getUniqueID() == null) {
           continue;
         }
@@ -181,7 +181,6 @@ public final class MpxjHelper {
     return value == null ? null : value.doubleValue();
   }
 
-  /** COST1/COST2 via reflection for MPXJ API compatibility. */
   private static Double customCost(Task task, int index) {
     try {
       var method = Task.class.getMethod("getCost", int.class);
@@ -190,7 +189,7 @@ public final class MpxjHelper {
         return n.doubleValue();
       }
     } catch (ReflectiveOperationException ignored) {
-      // field unavailable in this MPXJ build
+      // unavailable
     }
     return null;
   }
@@ -203,7 +202,7 @@ public final class MpxjHelper {
         return n.doubleValue();
       }
     } catch (ReflectiveOperationException ignored) {
-      // field unavailable
+      // unavailable
     }
     return null;
   }
