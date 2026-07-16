@@ -17,7 +17,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "project-control:import": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/modules/project-control/import/cli/import.cli.ts",
+    "project-control:mpp-check": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/modules/project-control/import/cli/mpp-check.cli.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
