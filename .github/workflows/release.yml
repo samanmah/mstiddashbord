@@ -266,10 +266,11 @@ jobs:
           SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GITHUB_TOKEN_FALLBACK: ${{ github.token }}
         run: |
           set -euo pipefail
           missing=0
-          for name in SERVER_HOST SERVER_PORT SERVER_USER SERVER_SSH_KEY DEPLOY_PATH GHCR_READ_TOKEN; do
+          for name in SERVER_HOST SERVER_PORT SERVER_USER SERVER_SSH_KEY DEPLOY_PATH; do
             val="${!name}"
             if [[ -z "$val" ]]; then
               echo "MISSING secret: $name" >&2
@@ -278,6 +279,11 @@ jobs:
               echo "OK secret: $name (len=${#val})"
             fi
           done
+          if [[ -n "${GHCR_READ_TOKEN}" ]]; then
+            echo "OK secret: GHCR_READ_TOKEN (len=${#GHCR_READ_TOKEN})"
+          else
+            echo "INFO: GHCR_READ_TOKEN unset — falling back to github.token for GHCR pull (len=${#GITHUB_TOKEN_FALLBACK})"
+          fi
           [[ "$missing" -eq 0 ]] || exit 1
 
       - name: Fetch commit on server + deploy Staging
@@ -288,7 +294,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script_stop: true
-          envs: FULL_SHA,API_DIGEST,WEB_DIGEST,DEPLOY_PATH,GHCR_READ_TOKEN
+          envs: FULL_SHA,API_DIGEST,WEB_DIGEST,DEPLOY_PATH,GHCR_READ_TOKEN,GHCR_USERNAME
           script: |
             set -euo pipefail
             echo "Remote deploy starting for ${FULL_SHA}"
@@ -305,8 +311,7 @@ jobs:
             fi
             test -f "${WT}/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
             chmod +x "${WT}/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
-            export FULL_SHA API_DIGEST WEB_DIGEST DEPLOY_PATH GHCR_READ_TOKEN
-            export GHCR_USERNAME=samanmah
+            export FULL_SHA API_DIGEST WEB_DIGEST DEPLOY_PATH GHCR_READ_TOKEN GHCR_USERNAME
             export STAGING_ENV_FILE=/opt/ppm/secrets/.env.staging
             "${WT}/infrastructure/scripts/project-control/ci-deploy-staging-remote.sh"
         env:
@@ -314,7 +319,8 @@ jobs:
           API_DIGEST: ${{ needs.build-push.outputs.api_digest }}
           WEB_DIGEST: ${{ needs.build-push.outputs.web_digest }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN || github.token }}
+          GHCR_USERNAME: ${{ github.actor }}
 
   # ---------------------------------------------------------------------------
   # Smoke Staging
@@ -515,59 +521,55 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.full_sha }}
 
-      - name: Prepare SSH
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
-
       - name: Deploy Production over SSH
         id: deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          envs: FULL_SHA,API_DIGEST,WEB_DIGEST,DEPLOY_PATH,GHCR_READ_TOKEN,GHCR_USERNAME
+          script: |
+            set -euo pipefail
+            WT="/opt/ppm/releases/worktrees/${FULL_SHA}"
+            if [[ ! -d "$WT" ]]; then
+              git -C "${DEPLOY_PATH}" fetch --prune origin
+              git -C "${DEPLOY_PATH}" worktree add --detach "$WT" "${FULL_SHA}"
+            fi
+            chmod +x "$WT/infrastructure/scripts/project-control/ci-deploy-production-remote.sh"
+            export FULL_SHA API_DIGEST WEB_DIGEST DEPLOY_PATH GHCR_READ_TOKEN GHCR_USERNAME
+            OUT="$("$WT/infrastructure/scripts/project-control/ci-deploy-production-remote.sh")"
+            echo "$OUT"
+            echo "$OUT" | grep -E '^BACKUP_FILE=' | tail -1
+            echo "$OUT" | grep -E '^BACKUP_SHA256=' | tail -1
+            echo "$OUT" | grep -E '^STATE_DIR=' | tail -1
         env:
           FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
           API_DIGEST: ${{ needs.build-push.outputs.api_digest }}
           WEB_DIGEST: ${{ needs.build-push.outputs.web_digest }}
-        run: |
-          set -euo pipefail
-          OUT="$(mktemp)"
-          ssh -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
-            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
-            env FULL_SHA="$FULL_SHA" \
-                API_DIGEST="$API_DIGEST" \
-                WEB_DIGEST="$WEB_DIGEST" \
-                DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}" \
-                GHCR_READ_TOKEN="${{ secrets.GHCR_READ_TOKEN }}" \
-                GHCR_USERNAME=samanmah \
-                bash -s <<'REMOTE' | tee "$OUT"
-          set -euo pipefail
-          WT="/opt/ppm/releases/worktrees/${FULL_SHA}"
-          if [[ ! -d "$WT" ]]; then
-            git -C "${DEPLOY_PATH}" worktree add --detach "$WT" "${FULL_SHA}"
-          fi
-          chmod +x "$WT/infrastructure/scripts/project-control/ci-deploy-production-remote.sh"
-          "$WT/infrastructure/scripts/project-control/ci-deploy-production-remote.sh"
-          REMOTE
-          BACKUP_FILE="$(grep -E '^BACKUP_FILE=' "$OUT" | tail -1 | cut -d= -f2- || true)"
-          BACKUP_SHA256="$(grep -E '^BACKUP_SHA256=' "$OUT" | tail -1 | cut -d= -f2- || true)"
-          STATE_DIR="$(grep -E '^STATE_DIR=' "$OUT" | tail -1 | cut -d= -f2- || true)"
-          echo "backup_file=${BACKUP_FILE}" >> "$GITHUB_OUTPUT"
-          echo "backup_sha256=${BACKUP_SHA256}" >> "$GITHUB_OUTPUT"
-          echo "state_dir=${STATE_DIR}" >> "$GITHUB_OUTPUT"
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN || github.token }}
+          GHCR_USERNAME: ${{ github.actor }}
 
       - name: Verify Production liveness FULL_SHA
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script_stop: true
+          envs: FULL_SHA
+          script: |
+            set -euo pipefail
+            LIVE="$(curl -fsS http://127.0.0.1:1011/api/v1/health/liveness)"
+            echo "$LIVE"
+            echo "$LIVE" | grep -Fq "\"gitSha\":\"${FULL_SHA}\""
+            curl -fsS http://127.0.0.1:1011/api/v1/health/readiness >/dev/null
         env:
           FULL_SHA: ${{ needs.resolve.outputs.full_sha }}
-        run: |
-          set -euo pipefail
-          ssh -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
-            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
-            "curl -fsS http://127.0.0.1:1011/api/v1/health/liveness" | tee /tmp/prod-live.json
-          grep -Fq "\"gitSha\":\"${FULL_SHA}\"" /tmp/prod-live.json
-          ssh -i ~/.ssh/id_deploy -p "${{ secrets.SERVER_PORT }}" -o IdentitiesOnly=yes \
-            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
-            "curl -fsS http://127.0.0.1:1011/api/v1/health/readiness" >/dev/null
 
   # ---------------------------------------------------------------------------
   # Summary
