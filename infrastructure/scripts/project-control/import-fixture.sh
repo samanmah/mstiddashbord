@@ -48,23 +48,57 @@ LOGIN_JSON="$(curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" \
 CSRF="$(awk '$6=="csrf_token"{print $7}' "$COOKIE_JAR" | tail -1)"
 [[ -n "$CSRF" ]] || die "csrf_token دریافت نشد."
 
-log "Create or select staging project..."
+log "Create or select staging fixture project (deterministic STG-PC-001)..."
 PROJECTS="$(curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" "${API}/projects")"
-PROJECT_ID="$(printf '%s' "$PROJECTS" | node -e '
+SELECT_JSON="$(printf '%s' "$PROJECTS" | node --input-type=module -e '
+  import { selectStagingFixtureProject, FIXTURE_PROJECT_CREATE } from "./infrastructure/scripts/project-control/select-staging-fixture-project.mjs";
   let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
-    const arr=JSON.parse(d); const p=arr.find(x=>String(x.titleFa||"").includes("Staging Control"))||arr[0];
-    if(!p) process.exit(2); process.stdout.write(p.id);
+    try {
+      const arr=JSON.parse(d);
+      const result=selectStagingFixtureProject(arr);
+      if (result.action==="reuse") {
+        process.stdout.write(JSON.stringify({ action:"reuse", id: result.project.id }));
+      } else {
+        process.stdout.write(JSON.stringify({ action:"create", create: FIXTURE_PROJECT_CREATE }));
+      }
+    } catch (e) {
+      console.error(String(e && e.message ? e.message : e));
+      process.exit(2);
+    }
   });
-')" || true
+')" || die "انتخاب پروژه Fixture شکست خورد."
 
-if [[ -z "${PROJECT_ID:-}" ]]; then
+SELECT_ACTION="$(printf '%s' "$SELECT_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(d).action))')"
+if [[ "$SELECT_ACTION" == "reuse" ]]; then
+  PROJECT_ID="$(printf '%s' "$SELECT_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(d).id))')"
+  log "Reuse fixture project id=${PROJECT_ID}"
+else
+  CREATE_BODY="$(printf '%s' "$SELECT_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(d).create)))')"
   CREATE="$(curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" \
     -H "Content-Type: application/json" -H "X-CSRF-Token: ${CSRF}" \
     -X POST "${API}/projects" \
-    -d '{"titleFa":"Staging Control Project","titleEn":"Staging Control","projectCode":"STG-PC-001","projectManager":"Staging Editor","budgetBillionRial":1}')"
+    -d "$CREATE_BODY")"
   PROJECT_ID="$(printf '%s' "$CREATE" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>process.stdout.write(JSON.parse(d).id))')"
+  [[ -n "$PROJECT_ID" ]] || die "ساخت پروژه Fixture ناموفق بود."
+  log "Created fixture project id=${PROJECT_ID}"
 fi
-log "ProjectId=${PROJECT_ID}"
+
+log "Verify fixture project contract via GET..."
+PROJECT_JSON="$(curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-CSRF-Token: ${CSRF}" \
+  "${API}/projects/${PROJECT_ID}")"
+printf '%s' "$PROJECT_JSON" | EXPECTED_PROJECT_ID="$PROJECT_ID" node --input-type=module -e '
+  import { assertFixtureProjectContract, FIXTURE_PROJECT_CODE, FIXTURE_PROJECT_CREATE } from "./infrastructure/scripts/project-control/select-staging-fixture-project.mjs";
+  let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
+    const p=JSON.parse(d);
+    if (p.id !== process.env.EXPECTED_PROJECT_ID) {
+      console.error(`id mismatch: expected ${process.env.EXPECTED_PROJECT_ID}, got ${p.id}`);
+      process.exit(2);
+    }
+    assertFixtureProjectContract(p);
+    if (p.projectCode !== FIXTURE_PROJECT_CODE || p.titleFa !== FIXTURE_PROJECT_CREATE.titleFa) process.exit(2);
+  });
+' || die "Assert قرارداد پروژه Fixture پس از GET شکست خورد."
+log "ProjectId=${PROJECT_ID} projectCode=STG-PC-001 titleFa=Staging Control Project"
 
 log "Enable Project Control (idempotent)..."
 curl -fsS -c "$COOKIE_JAR" -b "$COOKIE_JAR" \

@@ -71,7 +71,10 @@ export function AdvancedDashboardHeader({
           <p className="text-xs font-medium tracking-wide text-white/70">
             داشبورد کنترل پروژهٔ پیشرفته
           </p>
-          <h1 className="truncate text-lg font-extrabold text-brand-yellow md:text-2xl">
+          <h1
+            data-testid="dashboard-project-title"
+            className="truncate text-lg font-extrabold text-brand-yellow md:text-2xl"
+          >
             {project.titleFa}
           </h1>
           {project.titleEn ? (

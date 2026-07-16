@@ -1,7 +1,9 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { UserRole } from '@ppm/contracts';
+
+export const FIXTURE_PROJECT_CODE = 'STG-PC-001';
 
 export const CREDENTIALS = {
   editor: {
@@ -18,6 +20,12 @@ const EXPECTED_ROLE = {
   editor: UserRole.PROJECT_EDITOR,
   viewer: UserRole.MANAGER_VIEWER,
 } as const;
+
+export interface FixtureProjectInfo {
+  id: string;
+  titleFa: string;
+  projectCode: string;
+}
 
 /**
  * Project ID قطعی Fixture Staging از artifact.
@@ -40,6 +48,35 @@ export function getFixtureProjectId(): string {
   throw new Error(
     'Fixture project ID یافت نشد. ابتدا import-fixture.sh را اجرا کنید یا E2E_FIXTURE_PROJECT_ID را تنظیم کنید.',
   );
+}
+
+/**
+ * دریافت پروژه Fixture از API و Assert قرارداد:
+ * HTTP 200، id=artifact، projectCode=STG-PC-001.
+ * titleFa از پاسخ خوانده می‌شود (Hardcode نمی‌شود).
+ */
+export async function assertFixtureProject(
+  request: APIRequestContext,
+  projectId: string,
+): Promise<FixtureProjectInfo> {
+  const res = await request.get(`/api/v1/projects/${projectId}`);
+  expect(res.status(), `GET /projects/${projectId} باید 200 باشد`).toBe(200);
+  const project = (await res.json()) as {
+    id?: string;
+    titleFa?: string;
+    projectCode?: string | null;
+  };
+  expect(project.id, 'id پروژه باید با artifact برابر باشد').toBe(projectId);
+  expect(project.projectCode, `projectCode باید ${FIXTURE_PROJECT_CODE} باشد`).toBe(
+    FIXTURE_PROJECT_CODE,
+  );
+  expect(typeof project.titleFa, 'titleFa باید رشته باشد').toBe('string');
+  expect(project.titleFa?.length ?? 0, 'titleFa نباید خالی باشد').toBeGreaterThan(0);
+  return {
+    id: project.id!,
+    titleFa: project.titleFa!,
+    projectCode: project.projectCode!,
+  };
 }
 
 /** Assert قرارداد /auth/me برای نقش فعلی (بدون چاپ Secret/Cookie). */
@@ -84,7 +121,6 @@ export async function login(
       const alertText = (await page.getByRole('alert').textContent().catch(() => '')) ?? '';
       const rateLimited = /محدود|rate|تعداد درخواست|۴۲۹|429/i.test(alertText);
       if (!rateLimited || attempt === 3) break;
-      // صبر تا پنجرهٔ throttle بک‌اند (۶۰s) تمام شود — Secret چاپ نمی‌شود.
       await page.waitForTimeout(65_000);
     }
   }

@@ -12,11 +12,18 @@ export E2E_EDITOR_PASSWORD="${SEED_EDITOR_PASSWORD:?SEED_EDITOR_PASSWORD require
 export E2E_VIEWER_USERNAME="${SEED_VIEWER_USERNAME:-viewer}"
 export E2E_VIEWER_PASSWORD="${SEED_VIEWER_PASSWORD:?SEED_VIEWER_PASSWORD required}"
 
+# HTML report تولید شود ولی خودکار Serve/Open نشود (Failure باید فوراً exit کند).
+export PLAYWRIGHT_HTML_OPEN=never
+
 log "E2E base URL=${PLAYWRIGHT_BASE_URL}"
 curl -fsS "${PLAYWRIGHT_BASE_URL}/api/v1/health/liveness" >/dev/null || die "Staging در دسترس نیست."
 
 cd "$ROOT_DIR/apps/web"
+set +e
 pnpm exec playwright test e2e/project-control.spec.ts e2e/dashboard.spec.ts \
   --reporter=list --reporter=html
+E2E_CODE=$?
+set -e
+[[ "$E2E_CODE" -eq 0 ]] || die "E2E شکست خورد (exit=${E2E_CODE}). HTML report بدون Serve در playwright-report/ موجود است."
 log "E2E PASSED"
 exit 0

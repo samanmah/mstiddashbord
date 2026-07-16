@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   assertAuthMe,
+  assertFixtureProject,
   CREDENTIALS,
   getFixtureProjectId,
   logout,
@@ -17,10 +18,11 @@ test.describe('احراز هویت و دسترسی مشاهده‌گر', () => {
 
   test('۱-۲) ورود Viewer و مشاهده داشبورد Fixture', async ({ page }) => {
     const projectId = getFixtureProjectId();
+    const fixture = await assertFixtureProject(page.request, projectId);
     await page.goto(`/dashboard/projects/${projectId}`);
     await assertAuthMe(page, 'viewer');
     await expect(page.getByTestId('advanced-dashboard')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole('heading', { name: 'Staging Control Project' })).toBeVisible();
+    await expect(page.getByTestId('dashboard-project-title')).toHaveText(fixture.titleFa);
     await expect(page.getByTestId('executive-kpis')).toBeVisible();
     await expect(page.getByText('پیشرفت برنامه‌ای', { exact: true })).toBeVisible();
     await expect(page.getByText('پیشرفت واقعی', { exact: true })).toBeVisible();
@@ -69,6 +71,7 @@ test.describe('ویرایشگر و تغییر داده', () => {
 
   test('۵-۶) فعالیت‌های پروژه Fixture در پنل مدیریت', async ({ page }) => {
     const projectId = getFixtureProjectId();
+    await assertFixtureProject(page.request, projectId);
     await page.goto(`/admin/projects/${projectId}/activities`);
     await assertAuthMe(page, 'editor');
     await expect(page.getByTestId('admin-shell')).toBeVisible({ timeout: 15_000 });
