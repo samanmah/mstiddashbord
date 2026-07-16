@@ -67,18 +67,23 @@ export function AdvancedDashboardHeader({
         className="pointer-events-none absolute -top-24 left-1/4 h-48 w-[36rem] rounded-full bg-accent-blue/20 blur-3xl"
       />
       <div className="relative flex flex-col gap-4 md:flex-row-reverse md:items-center md:justify-between">
-        <div className="min-w-0 text-right">
+        <div className="min-w-0 flex-1 text-right">
           <p className="text-xs font-medium tracking-wide text-white/70">
             داشبورد کنترل پروژهٔ پیشرفته
           </p>
           <h1
             data-testid="dashboard-project-title"
-            className="truncate text-lg font-extrabold text-brand-yellow md:text-2xl"
+            dir="auto"
+            className="line-clamp-2 text-[clamp(1rem,2.6vw,1.5rem)] font-extrabold leading-snug text-brand-yellow [overflow-wrap:anywhere]"
           >
             {project.titleFa}
           </h1>
           {project.titleEn ? (
-            <p className="truncate text-sm text-white/60" dir="ltr">
+            <p
+              data-testid="dashboard-project-title-en"
+              dir="ltr"
+              className="mt-0.5 line-clamp-2 text-left text-[clamp(0.75rem,1.8vw,0.875rem)] leading-snug text-white/60 [overflow-wrap:anywhere]"
+            >
               {project.titleEn}
             </p>
           ) : null}
@@ -107,8 +112,9 @@ export function AdvancedDashboardHeader({
           <HeaderStat
             icon={<Landmark className="h-4 w-4" aria-hidden />}
             tone="text-accent-emerald"
-            label="بودجه مصوب"
+            label="بودجه مصوب پروژه"
             value={`${faNumber(project.budgetBillionRial ?? 0)} میلیارد ریال`}
+            title={`بودجه مصوب پروژه: ${faNumber(project.budgetBillionRial ?? 0)} میلیارد ریال`}
           />
         </div>
       </div>
@@ -198,18 +204,25 @@ function HeaderStat({
   tone,
   label,
   value,
+  title,
 }: {
   icon: React.ReactNode;
   tone: string;
   label: string;
   value: string;
+  title?: string;
 }): React.JSX.Element {
   return (
-    <div className="flex items-center gap-2 rounded-xl bg-white/[0.08] px-3 py-1.5 ring-1 ring-inset ring-white/10">
-      <span className={`section-icon bg-white/10 ${tone}`}>{icon}</span>
-      <div className="text-right">
+    <div
+      title={title ?? `${label}: ${value}`}
+      className="flex min-w-0 max-w-full items-center gap-2 rounded-xl bg-white/[0.08] px-3 py-1.5 ring-1 ring-inset ring-white/10"
+    >
+      <span className={`section-icon shrink-0 bg-white/10 ${tone}`}>{icon}</span>
+      <div className="min-w-0 text-right">
         <p className="text-[10px] text-white/55">{label}</p>
-        <p className="text-sm font-bold text-white">{value}</p>
+        <p className="truncate text-[clamp(0.7rem,1.6vw,0.875rem)] font-bold tabular-nums text-white">
+          {value}
+        </p>
       </div>
     </div>
   );

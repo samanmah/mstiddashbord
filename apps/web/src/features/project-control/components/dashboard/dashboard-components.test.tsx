@@ -36,6 +36,15 @@ describe('ExecutiveKpis', () => {
     // null SPI shows placeholder, not fake zero
     expect(screen.getByText('—')).toBeInTheDocument();
   });
+
+  it('labels imported package budget separately from approved project budget', () => {
+    render(<ExecutiveKpis kpis={kpis} />);
+    expect(screen.getByTestId('kpi-imported-budget')).toBeInTheDocument();
+    expect(screen.getByText('جمع بودجه بسته‌های واردشده')).toBeInTheDocument();
+    expect(screen.queryByText('بودجه کل')).not.toBeInTheDocument();
+    // نباید بودجه مصوب پروژه (میلیارد ریال) را با جمع Import یکی نشان دهد
+    expect(screen.queryByText(/میلیارد ریال/)).not.toBeInTheDocument();
+  });
 });
 
 describe('DashboardDataQuality', () => {

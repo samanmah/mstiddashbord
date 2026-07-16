@@ -172,7 +172,7 @@ function PhaseDrillDown({
   }, [phase, nodes]);
 
   return (
-    <div className="space-y-5 text-sm">
+    <div data-testid="phase-drilldown" className="space-y-5 text-sm">
       <Section title={`شکست‌های سطح دوم (${formatCount(detail.breaks.length)})`}>
         {detail.breaks.length === 0 ? (
           <Empty />

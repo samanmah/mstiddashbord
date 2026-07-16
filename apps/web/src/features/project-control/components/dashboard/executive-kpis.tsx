@@ -20,6 +20,7 @@ import {
   formatDelayDays,
   formatIndex,
   formatMoney,
+  formatMoneyCompact,
   formatPercent,
   formatVariance,
 } from '../../utils/progress-format';
@@ -75,16 +76,21 @@ export function ExecutiveKpis({ kpis }: { kpis: ControlExecutiveKpis }): React.J
         icon={<Gauge className="h-4 w-4" aria-hidden />}
       />
       <MetricCard
-        label="بودجه کل"
-        value={formatMoney(kpis.budgetTotal)}
-        hint="ریال"
+        testId="kpi-imported-budget"
+        label="جمع بودجه بسته‌های واردشده"
+        value={`${formatMoney(kpis.budgetTotal)} تومان`}
+        compactValue={formatMoneyCompact(kpis.budgetTotal, 'تومان')}
+        valueTitle={`${formatMoney(kpis.budgetTotal)} تومان`}
+        hint="تومان — از Import Excel/MPP"
         tone="neutral"
         icon={<Wallet className="h-4 w-4" aria-hidden />}
       />
       <MetricCard
         label="هزینه واقعی"
-        value={formatMoney(kpis.actualCost)}
-        hint="ریال"
+        value={`${formatMoney(kpis.actualCost)} تومان`}
+        compactValue={formatMoneyCompact(kpis.actualCost, 'تومان')}
+        valueTitle={`${formatMoney(kpis.actualCost)} تومان`}
+        hint="تومان"
         tone="neutral"
         icon={<CircleDollarSign className="h-4 w-4" aria-hidden />}
       />

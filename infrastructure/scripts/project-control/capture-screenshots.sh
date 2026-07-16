@@ -29,8 +29,19 @@ REQUIRED=(
   phase-drilldown-1920x1080.png
 )
 for f in "${REQUIRED[@]}"; do
-  [[ -f "$ROOT_DIR/artifacts/project-control/$f" ]] || die "Screenshot missing: $f"
-  log "Screenshot OK: artifacts/project-control/$f"
+  path="$ROOT_DIR/artifacts/project-control/$f"
+  [[ -f "$path" ]] || die "Screenshot missing: $f"
+  size="$(wc -c <"$path" | tr -d ' ')"
+  [[ "$size" -gt 5000 ]] || die "Screenshot خیلی کوچک/مشکوک است: $f (${size} bytes)"
+  log "Screenshot OK: artifacts/project-control/$f (${size} bytes)"
 done
+
+GANTT_EDITOR="$ROOT_DIR/artifacts/project-control/gantt-editor-1920x1080.png"
+GANTT_SIZE="$(wc -c <"$GANTT_EDITOR" | tr -d ' ')"
+# PNG خالی/تقریباً سفید (~۸KB) پذیرفته نیست — باید Timeline و ردیف واقعی داشته باشد.
+[[ "$GANTT_SIZE" -ge 40000 ]] \
+  || die "Gantt Editor screenshot بدون محتوای واقعی است (${GANTT_SIZE} bytes؛ حداقل 40000)."
+log "Gantt Editor screenshot size OK: ${GANTT_SIZE} bytes"
+
 log "Screenshots PASSED"
 exit 0

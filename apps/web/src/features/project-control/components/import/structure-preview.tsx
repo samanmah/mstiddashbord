@@ -42,7 +42,12 @@ export function StructurePreview({ preview }: { preview: ControlImportPreview })
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricCard label="بازهٔ زمانی" value={`${jalaliFa(m.dateMin)} تا ${jalaliFa(m.dateMax)}`} />
         <MetricCard label="مجموع روزها" value={formatCount(m.totalDays)} />
-        <MetricCard label="بودجهٔ کل" value={formatMoney(m.budgetTotal)} tone="blue" />
+        <MetricCard
+          label="جمع بودجه بسته‌ها"
+          value={`${formatMoney(m.budgetTotal)} تومان`}
+          valueTitle={`${formatMoney(m.budgetTotal)} تومان`}
+          tone="blue"
+        />
         <MetricCard label="تعداد دوره‌ها" value={formatCount(m.periodCount)} />
       </div>
     </div>

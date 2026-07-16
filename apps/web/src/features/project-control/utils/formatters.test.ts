@@ -13,6 +13,7 @@ import {
   formatCount,
   formatIndex,
   formatMoney,
+  formatMoneyCompact,
   formatPercent,
   formatVariance,
 } from './progress-format';
@@ -38,6 +39,18 @@ describe('progress-format null-safety', () => {
   it('formatMoney parses numeric strings', () => {
     expect(formatMoney('1000')).not.toBe(EMPTY_PLACEHOLDER);
     expect(formatMoney('not-a-number')).toBe(EMPTY_PLACEHOLDER);
+  });
+
+  it('formatMoneyCompact uses billions for large imported package budgets', () => {
+    const compact = formatMoneyCompact(929_875_000_000, 'تومان');
+    expect(compact).toContain('میلیارد');
+    expect(compact).toContain('تومان');
+    expect(compact).not.toContain('۹۲۹٬۸۷۵٬۰۰۰٬۰۰۰');
+  });
+
+  it('formatMoney keeps full digits for wide desktop display', () => {
+    const full = formatMoney(929_875_000_000);
+    expect(full.replace(/[^\d۰-۹]/g, '').length).toBeGreaterThan(9);
   });
 });
 

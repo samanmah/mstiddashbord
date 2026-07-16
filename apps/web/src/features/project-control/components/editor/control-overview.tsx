@@ -98,8 +98,20 @@ export function ControlOverview({ projectId }: { projectId: string }): React.JSX
       <section>
         <h3 className="mb-2 text-sm font-bold text-navy-900">هزینه و کیفیت</h3>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <MetricCard label="بودجه کل" value={formatMoney(kpi?.budgetTotal)} icon={<Wallet className="h-4 w-4" />} tone="blue" />
-          <MetricCard label="هزینه واقعی" value={formatMoney(kpi?.actualCost)} icon={<Coins className="h-4 w-4" />} tone="green" />
+          <MetricCard
+            label="جمع بودجه بسته‌های واردشده"
+            value={`${formatMoney(kpi?.budgetTotal)} تومان`}
+            valueTitle={`${formatMoney(kpi?.budgetTotal)} تومان`}
+            icon={<Wallet className="h-4 w-4" />}
+            tone="blue"
+          />
+          <MetricCard
+            label="هزینه واقعی"
+            value={`${formatMoney(kpi?.actualCost)} تومان`}
+            valueTitle={`${formatMoney(kpi?.actualCost)} تومان`}
+            icon={<Coins className="h-4 w-4" />}
+            tone="green"
+          />
           <MetricCard label="پیش‌بینی پایان" value={jalaliFa(kpi?.forecastFinish)} icon={<CalendarClock className="h-4 w-4" />} />
           <MetricCard label="مسائل کیفیت داده" value={dqCount === 0 ? 'بدون مسئله' : formatCount(dqCount)} icon={<ShieldAlert className="h-4 w-4" />} tone={dqCount === 0 ? 'green' : 'purple'} />
           <MetricCard label="آخرین ورود اطلاعات" value={lastImport ? isoToJalaliFa(lastImport.createdAt) : '—'} />

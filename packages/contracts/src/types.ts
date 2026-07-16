@@ -24,6 +24,10 @@ export interface ProjectDto {
   projectCode: string | null;
   projectManager: string;
   projectType: string;
+  /**
+   * بودجهٔ مصوب پروژه به واحد «میلیارد ریال» (دادهٔ اصلی پروژه).
+   * با جمع `budgetAmount` بسته‌های واردشده در کنترل پروژه (تومان) یکی نیست.
+   */
   budgetBillionRial: number;
   description: string;
   /** ISO date */

@@ -70,6 +70,7 @@ export interface ExcelManifest {
   totalDays: number | null;
   totalMonths: number | null;
   budgetRowCount: number;
+  /** جمع `budgetAmount` بسته‌های واردشده به تومان (نه بودجهٔ مصوب پروژه به میلیارد ریال). */
   budgetTotal: number;
   ownerCount: number;
   dodCount: number;

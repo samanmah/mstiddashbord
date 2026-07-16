@@ -35,12 +35,41 @@ export function formatCount(value: number | null | undefined): string {
 /**
  * نمایش بودجه/هزینه. مقدار به‌صورت رشتهٔ عددی (برای حفظ دقت) از Backend می‌آید.
  * خروجی با جداکنندهٔ هزارگان و ارقام فارسی؛ null یا رشتهٔ نامعتبر → «—».
+ *
+ * واحد معنایی وابسته به منبع است:
+ * - `Project.budgetBillionRial` → میلیارد ریال (بودجهٔ مصوب پروژه)
+ * - `budgetTotal` / `budgetAmount` کنترل پروژه → تومان (جمع بسته‌های واردشده از Excel/MPP)
  */
 export function formatMoney(value: string | number | null | undefined): string {
   if (value == null || value === '') return EMPTY_PLACEHOLDER;
   const num = typeof value === 'number' ? value : Number(value);
   if (Number.isNaN(num)) return EMPTY_PLACEHOLDER;
   return toPersianDigits(formatNumber(num, 0));
+}
+
+/**
+ * نمایش فشرده برای عرض‌های کوچک (مثلاً ۹۲۹٫۸۸ میلیارد تومان).
+ * عدد کامل همچنان باید در title/aria-label نگه داشته شود.
+ */
+export function formatMoneyCompact(
+  value: string | number | null | undefined,
+  unit = 'تومان',
+): string {
+  if (value == null || value === '') return EMPTY_PLACEHOLDER;
+  const num = typeof value === 'number' ? value : Number(value);
+  if (Number.isNaN(num)) return EMPTY_PLACEHOLDER;
+  const abs = Math.abs(num);
+  if (abs >= 1_000_000_000) {
+    const billions = num / 1_000_000_000;
+    const digits = Number.isInteger(billions) ? 0 : 2;
+    return `${toPersianDigits(formatNumber(Number(billions.toFixed(digits)), digits))} میلیارد ${unit}`;
+  }
+  if (abs >= 1_000_000) {
+    const millions = num / 1_000_000;
+    const digits = Number.isInteger(millions) ? 0 : 2;
+    return `${toPersianDigits(formatNumber(Number(millions.toFixed(digits)), digits))} میلیون ${unit}`;
+  }
+  return `${formatMoney(num)} ${unit}`;
 }
 
 /** روزهای تأخیر: مثبت = تأخیر. */

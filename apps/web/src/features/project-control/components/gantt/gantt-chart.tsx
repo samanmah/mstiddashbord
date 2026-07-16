@@ -293,7 +293,7 @@ export function GanttChart({
   return (
     <div
       ref={wrapperRef}
-      data-testid="gantt-chart"
+      data-testid="gantt-editor-root"
       className={cn('flex flex-col gap-2 bg-white', isFullscreen && 'h-screen p-3')}
     >
       {/* راهنمای موبایل */}
@@ -384,6 +384,7 @@ export function GanttChart({
       {/* بدنهٔ گانت */}
       <div
         ref={scrollRef}
+        data-testid="gantt-timeline"
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
         className="relative overflow-auto rounded-card border border-borderx"
         style={{ height: isFullscreen ? 'calc(100vh - 120px)' : '70vh' }}
@@ -425,6 +426,7 @@ export function GanttChart({
             return (
               <div
                 key={n.id}
+                data-testid="gantt-task-row"
                 className={cn(
                   'flex border-b border-borderx/50',
                   row.depth === 0 && 'bg-surface',
