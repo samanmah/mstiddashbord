@@ -123,7 +123,8 @@ test.describe('کنترل پروژه — Editor مسیر اصلی', () => {
     await expect(
       page.getByText(/Manifest معتبر است|عدم تطابق Manifest/),
     ).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByRole('columnheader', { name: 'معیار' })).toBeVisible();
+    await expect(page.getByText('معیار', { exact: true })).toBeVisible();
+    await expect(page.getByText('مقدار واقعی', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'مرحلهٔ بعد' }).click();
     await expect(page.getByText('فازها', { exact: true })).toBeVisible({ timeout: 15_000 });
