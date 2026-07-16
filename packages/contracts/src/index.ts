@@ -5,3 +5,4 @@ export * from './normalize';
 export * from './api-error';
 export * from './types';
 export * from './validation';
+export * from './project-control';
