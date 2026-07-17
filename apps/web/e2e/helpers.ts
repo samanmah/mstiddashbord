@@ -7,11 +7,9 @@ import { UserRole } from '@ppm/contracts';
 export function attachImportBatchIdRegressionGuard(page: Page): void {
   page.on('request', (request) => {
     const url = request.url();
-    const banned = [
-      '/imports/undefined/',
-      '/imports/null/',
-      '/imports/[object Object]/
-    ];
+    // براکت‌ها با escape تا SWC/Playwright رشته را خراب نکند.
+    const objectPath = '/imports/\u005bobject Object\u005d/';
+    const banned = ['/imports/undefined/', '/imports/null/', objectPath];
     for (const bad of banned) {
       if (url.includes(bad)) {
         throw new Error(`درخواست ممنوع با شناسهٔ نامعتبر دستهٔ Import: ${url}`);
