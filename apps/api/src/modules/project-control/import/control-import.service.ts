@@ -30,7 +30,12 @@ import { type AppConfig } from '../../../config/configuration';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService, type AuditContext } from '../../audit/audit.service';
 import { GanttExcelParserService } from './gantt-excel-parser.service';
-import { compareManifest, manifestIsValid } from './manifest-validator';
+import {
+  compareManifest,
+  manifestIsValid,
+  shouldRunStrictFixtureValidation,
+  validateStructural,
+} from './manifest-validator';
 import { buildWbsTree } from './wbs-tree-builder';
 
 const ALLOWED_EXT = new Set(['xlsx', 'xlsm', 'mpp']);
@@ -206,21 +211,36 @@ export class ControlImportService {
     importBatchId: string | null,
     parsed: ParsedExcelWorkbook,
     dryRun: boolean,
+    options: { strictFixtureManifest?: boolean } = {},
   ): Promise<ControlImportPreview> {
     const issues: ImportIssue[] = [...parsed.issues];
-    const checks = compareManifest(parsed.manifest);
-    const manifestValid = manifestIsValid(checks);
-    if (!manifestValid) {
-      for (const c of checks.filter((x) => !x.ok)) {
-        issues.push({
-          level: ImportIssueLevel.CRITICAL,
-          code: ImportIssueCode.MANIFEST_MISMATCH,
-          message: `عدم تطابق Manifest «${c.key}»: انتظار ${c.expected} اما ${c.actual}.`,
-        });
+    const tree = buildWbsTree(parsed.rows, 'root');
+
+    const structural = validateStructural(parsed, tree, 'root');
+    issues.push(...structural.issues);
+    let checks = structural.checks;
+    let manifestValid = structural.ok;
+
+    const runStrict = shouldRunStrictFixtureValidation({
+      strictFixtureManifest: options.strictFixtureManifest,
+      fileHash: parsed.fileHash,
+    });
+    if (runStrict) {
+      const strictChecks = compareManifest(parsed.manifest);
+      checks = [...checks, ...strictChecks];
+      const strictOk = manifestIsValid(strictChecks);
+      manifestValid = manifestValid && strictOk;
+      if (!strictOk) {
+        for (const c of strictChecks.filter((x) => !x.ok)) {
+          issues.push({
+            level: ImportIssueLevel.CRITICAL,
+            code: ImportIssueCode.MANIFEST_MISMATCH,
+            message: `عدم تطابق Fixture Manifest «${c.key}»: انتظار ${c.expected} اما ${c.actual}.`,
+          });
+        }
       }
     }
 
-    const tree = buildWbsTree(parsed.rows, 'root');
     const conflicts = await this.detectConflicts(projectId, parsed);
 
     const criticalCount = issues.filter((i) => i.level === ImportIssueLevel.CRITICAL).length;

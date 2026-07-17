@@ -1,6 +1,9 @@
 import {
   computeOutlineLevels,
   countLeadingSpaces,
+  detectAndScalePercents,
+  isStrongTotalsLabel,
+  isTotalsLabel,
   parseBudgetToman,
   splitOwners,
   tryParseJalali,
@@ -31,6 +34,56 @@ describe('gantt-parse-utils', () => {
     });
   });
 
+  describe('isTotalsLabel (anchored)', () => {
+    it('عنوان عادی شامل «روز» Totals نیست', () => {
+      expect(isTotalsLabel('فعالیت روز اول')).toBe(false);
+      expect(isTotalsLabel('شکست برنامه‌ریزی روزانه')).toBe(false);
+    });
+    it('عنوان عادی شامل «ماه» Totals نیست', () => {
+      expect(isTotalsLabel('شکست ماهانه 1-2')).toBe(false);
+      expect(isTotalsLabel('بررسی گزارش ماه جاری')).toBe(false);
+    });
+    it('«جمع کل» Totals است', () => {
+      expect(isTotalsLabel('جمع کل')).toBe(true);
+      expect(isStrongTotalsLabel('جمع کل')).toBe(true);
+    });
+    it('«مجموع دوره» Totals است', () => {
+      expect(isTotalsLabel('مجموع دوره')).toBe(true);
+    });
+    it('exact روز/ماه Totals هستند', () => {
+      expect(isTotalsLabel('روز')).toBe(true);
+      expect(isTotalsLabel('ماه')).toBe(true);
+    });
+    it('total / grand total', () => {
+      expect(isTotalsLabel('total')).toBe(true);
+      expect(isTotalsLabel('Grand Total')).toBe(true);
+    });
+  });
+
+  describe('detectAndScalePercents', () => {
+    it('0 → 0', () => {
+      expect(detectAndScalePercents([0]).values).toEqual([0]);
+    });
+    it('0.25 → 25 و 1 → 100', () => {
+      const r = detectAndScalePercents([0.25, 1, null]);
+      expect(r.scale).toBe('fraction');
+      expect(r.values).toEqual([25, 100, null]);
+    });
+    it('0..100 بدون تغییر', () => {
+      const r = detectAndScalePercents([0, 25, 100]);
+      expect(r.scale).toBe('percent');
+      expect(r.values).toEqual([0, 25, 100]);
+    });
+    it('مقیاس مخلوط تشخیص داده می‌شود', () => {
+      const r = detectAndScalePercents([0.5, 75]);
+      expect(r.scale).toBe('mixed');
+      expect(r.values).toEqual([0.5, 75]);
+    });
+    it('null جدا می‌ماند', () => {
+      expect(detectAndScalePercents([null, null]).scale).toBe('empty');
+    });
+  });
+
   describe('parseBudgetToman', () => {
     it('مبلغ فارسی با پسوند تومان', () => {
       expect(parseBudgetToman('۸۷۵٬۰۰۰٬۰۰۰ تومان')).toBe(875_000_000);
@@ -40,6 +93,10 @@ describe('gantt-parse-utils', () => {
     });
     it('عدد مستقیم', () => {
       expect(parseBudgetToman(15_000_000_000)).toBe(15_000_000_000);
+    });
+    it('صفر بودجه حفظ می‌شود', () => {
+      expect(parseBudgetToman(0)).toBe(0);
+      expect(parseBudgetToman('0')).toBe(0);
     });
     it('مقادیر خالی/نامعتبر → null', () => {
       expect(parseBudgetToman(null)).toBeNull();

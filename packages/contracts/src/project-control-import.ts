@@ -7,7 +7,7 @@
 // نسخهٔ Parser (در ImportBatch.parserVersion ثبت می‌شود)
 // ---------------------------------------------------------------------------
 
-export const EXCEL_PARSER_VERSION = 'excel-gantt-1.0.0';
+export const EXCEL_PARSER_VERSION = 'excel-gantt-1.1.0';
 export const MPP_ADAPTER_VERSION = 'mpxj-adapter-1.0.0';
 
 // ---------------------------------------------------------------------------
@@ -40,6 +40,7 @@ export const ImportIssueCode = {
   MISSING_DOD: 'MISSING_DOD',
   DUPLICATE_TITLE: 'DUPLICATE_TITLE',
   BUDGET_UNPARSED: 'BUDGET_UNPARSED',
+  PERCENT_SCALE_MIXED: 'PERCENT_SCALE_MIXED',
   // INFO
   MISSING_DATES: 'MISSING_DATES',
   EMPTY_PERIOD: 'EMPTY_PERIOD',
@@ -84,9 +85,9 @@ export interface ExcelManifest {
 }
 
 /**
- * Manifest مورد انتظار فایل واقعی (مرجع: docs/project-control/source-analysis.md).
- * این مقادیر «هدف Assert» هستند نه دادهٔ Hardcode؛ Importer داده را از فایل استخراج
- * و با این مقادیر مقایسه می‌کند. اگر ساختار فایل عوض شود، عدم تطابق CRITICAL می‌شود.
+ * Manifest مورد انتظار Fixture شناخته‌شده (`artifacts/project-control/gantt-fixture.xlsx`
+ * و `buildGanttFixtureBuffer`). فقط برای Strict Fixture Validation استفاده می‌شود —
+ * نه برای هر فایل Excel واقعی/عمومی.
  */
 export const EXPECTED_EXCEL_MANIFEST: ExcelManifest = {
   phaseCount: 7,
@@ -96,18 +97,33 @@ export const EXPECTED_EXCEL_MANIFEST: ExcelManifest = {
   periodCount: 147,
   totalDays: 620,
   totalMonths: 21,
-  budgetRowCount: 5,
+  budgetRowCount: 6,
   budgetTotal: 929_875_000_000,
   ownerCount: 65,
   dodCount: 48,
   progressCount: 104,
-  startNonEmpty: 65,
+  /** پنج "-" پس از normalizeCellString → null؛ فقط ۶۰ تاریخ واقعی. */
+  startNonEmpty: 60,
   startValid: 60,
-  finishNonEmpty: 65,
+  finishNonEmpty: 60,
   finishValid: 60,
   dateMin: '1404/09/01',
   dateMax: '1406/12/10',
 };
+
+/** گزینه‌های فعال‌سازی Strict Fixture Manifest Validation. */
+export interface StrictFixtureValidationOptions {
+  /** صریح از Caller/CLI/تست. */
+  strictFixtureManifest?: boolean;
+  /** SHA256 فایل برای تطبیق با Fixture شناخته‌شده. */
+  fileHash?: string | null;
+}
+
+/**
+ * Hashهای شناخته‌شدهٔ Fixture (در صورت تغییر Fixture، regenerate و به‌روزرسانی شود).
+ * خالی = فقط از option/ENV استفاده می‌شود تا CI به hash ثابت وابسته نباشد.
+ */
+export const KNOWN_GANTT_FIXTURE_SHA256: readonly string[] = [];
 
 // ---------------------------------------------------------------------------
 // نتیجهٔ Parse اکسل (نمایش Preview + Mapping)

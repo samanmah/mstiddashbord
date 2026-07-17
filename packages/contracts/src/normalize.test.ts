@@ -38,6 +38,8 @@ describe('normalize', () => {
   it('treats null tokens as null', () => {
     expect(normalizeCellString('None')).toBeNull();
     expect(normalizeCellString('-')).toBeNull();
+    expect(normalizeCellString('—')).toBeNull();
+    expect(normalizeCellString('–')).toBeNull();
     expect(normalizeCellString('  متن  ')).toBe('متن');
   });
 

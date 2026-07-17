@@ -10,12 +10,16 @@ import {
   parseNumeric,
   type ParsedExcelWorkbook,
   type ParsedWbsRow,
+  toLatinDigits,
 } from '@ppm/contracts';
 import ExcelJS from 'exceljs';
 import { createHash } from 'node:crypto';
 import {
   computeOutlineLevels,
   countLeadingSpaces,
+  detectAndScalePercents,
+  isStrongTotalsLabel,
+  isTotalsLabel,
   parseBudgetToman,
   tryParseJalali,
 } from './gantt-parse-utils';
@@ -200,7 +204,7 @@ export class GanttExcelParserService {
     return null;
   }
 
-  /** خواندن ردیف‌های جمع «روز»/«ماه» در ستون Break1. */
+  /** خواندن ردیف‌های جمع روز/ماه با برچسب Exact (نه substring). */
   private readTotals(
     ws: ExcelJS.Worksheet,
     headerRow: number,
@@ -210,9 +214,22 @@ export class GanttExcelParserService {
     for (let r = headerRow + 1; r <= ws.rowCount; r += 1) {
       const label = normalizeCellString(this.rawCell(ws.getCell(r, COL.break1)));
       if (!label) continue;
+      const normalized = normalizeText(toLatinDigits(label));
       const value = parseNumeric(this.rawCell(ws.getCell(r, COL.break2)));
-      if (label.includes('روز') && totalDays === null) totalDays = value;
-      if (label.includes('ماه') && totalMonths === null) totalMonths = value;
+      if (
+        (normalized === 'روز' || normalized === 'جمع روز') &&
+        totalDays === null &&
+        value !== null
+      ) {
+        totalDays = value;
+      }
+      if (
+        (normalized === 'ماه' || normalized === 'جمع ماه') &&
+        totalMonths === null &&
+        value !== null
+      ) {
+        totalMonths = value;
+      }
     }
     return { totalDays, totalMonths };
   }
@@ -229,13 +246,30 @@ export class GanttExcelParserService {
     return count;
   }
 
-  /** آیا این سطر یک سطر جمع/راهنما است (نه فعالیت منبع)؟ */
+  /**
+   * آیا ردیف شبیه فعالیت عادی است؟ (عنوان غیرعددی یا تاریخ)
+   * برای جلوگیری از اشتباه گرفتن برچسب Exact «روز»/«ماه» وقتی واقعاً فعالیت است.
+   */
+  private rowLooksLikeActivity(ws: ExcelJS.Worksheet, r: number): boolean {
+    const title = normalizeCellString(this.rawCell(ws.getCell(r, COL.break2)));
+    const start = normalizeCellString(this.rawCell(ws.getCell(r, COL.start)));
+    const finish = normalizeCellString(this.rawCell(ws.getCell(r, COL.finish)));
+    if (start !== null || finish !== null) return true;
+    if (title === null) return false;
+    const latin = toLatinDigits(title).trim();
+    if (/^\d+(\.\d+)?$/.test(latin)) return false;
+    return title.length > 0;
+  }
+
+  /**
+   * Totals Row با تطبیق Anchored — نه includes("ماه"|"روز") داخل عنوان.
+   */
   private isTotalsRow(ws: ExcelJS.Worksheet, r: number): boolean {
     const label = normalizeCellString(this.rawCell(ws.getCell(r, COL.break1)));
-    if (label && (label.includes('روز') || label.includes('ماه') || label.startsWith('جمع'))) {
-      return true;
-    }
-    return false;
+    if (!isTotalsLabel(label)) return false;
+    if (isStrongTotalsLabel(label)) return true;
+    // Exact «روز»/«ماه»: فقط وقتی ردیف شبیه فعالیت پر نشده باشد.
+    return !this.rowLooksLikeActivity(ws, r);
   }
 
   private readDataRows(
@@ -247,14 +281,16 @@ export class GanttExcelParserService {
     // ردیف headerRow+1 = شماره‌گذاری دوره‌ها؛ داده از headerRow+2 شروع می‌شود.
     const firstData = headerRow + 2;
     for (let r = firstData; r <= ws.rowCount; r += 1) {
-      if (this.isTotalsRow(ws, r)) break;
+      if (this.isTotalsRow(ws, r)) {
+        // رد کردن ردیف جمع و ادامه (نه توقف کل فایل).
+        continue;
+      }
 
       const break2Cell = ws.getCell(r, COL.break2);
       const break2Raw = this.rawCell(break2Cell);
       const rawTitleFull = break2Raw === null ? '' : String(break2Raw);
       const normalizedTitle = normalizeText(rawTitleFull);
       if (normalizedTitle.length === 0) {
-        // سطر خالی — نادیده گرفته می‌شود (INFO).
         issues.push({
           level: ImportIssueLevel.INFO,
           code: ImportIssueCode.EMPTY_ROW_SKIPPED,
@@ -265,11 +301,12 @@ export class GanttExcelParserService {
         continue;
       }
 
-      const phaseTitle = normalizeText(
-        String(this.mergedValue(ws, r, COL.phase) ?? ''),
-      );
+      const phaseTitle = normalizeText(String(this.mergedValue(ws, r, COL.phase) ?? ''));
       const break1Val = this.mergedValue(ws, r, COL.break1);
       const break1Title = normalizeCellString(break1Val);
+
+      const percentRaw = this.rawCell(ws.getCell(r, COL.percent));
+      const percent = parseNumeric(percentRaw);
 
       rows.push({
         rowNumber: r,
@@ -291,7 +328,8 @@ export class GanttExcelParserService {
         periodActualDuration: parseNumeric(
           this.rawCell(ws.getCell(r, COL.periodActualDuration)),
         ),
-        percent: parseNumeric(this.rawCell(ws.getCell(r, COL.percent))),
+        // صفر معتبر است؛ parseNumeric آن را نگه می‌دارد (نه || null).
+        percent: percent !== null && Number.isFinite(percent) ? percent : null,
       });
     }
     return rows;
@@ -335,6 +373,23 @@ export class GanttExcelParserService {
       const levels = computeOutlineLevels(arr.map((x) => x.indent));
       arr.forEach((rr, i) => outlineByRow.set(rr.rowNumber, levels[i]!));
     }
+
+    // مقیاس Percent در سطح ستون (همهٔ ردیف‌ها با هم).
+    const scaled = detectAndScalePercents(rawRows.map((r) => r.percent));
+    if (scaled.scale === 'mixed') {
+      issues.push({
+        level: ImportIssueLevel.CRITICAL,
+        code: ImportIssueCode.PERCENT_SCALE_MIXED,
+        message:
+          'مقیاس Percent در ستون N مخلوط است (هم مقادیر ۰..۱ و هم بالاتر از ۱). مقیاس حدس زده نشد.',
+        sheet: GANTT_SHEET,
+        column: 'N',
+      });
+    }
+    const percentByRow = new Map<number, number | null>();
+    rawRows.forEach((rr, i) => {
+      percentByRow.set(rr.rowNumber, scaled.values[i] ?? null);
+    });
 
     const result: ParsedWbsRow[] = [];
     for (const rr of rawRows) {
@@ -381,6 +436,7 @@ export class GanttExcelParserService {
       }
 
       const budget = parseBudgetToman(rr.budgetRaw);
+      const percentComplete = percentByRow.get(rr.rowNumber) ?? null;
 
       result.push({
         sourceRow: rr.rowNumber,
@@ -405,7 +461,7 @@ export class GanttExcelParserService {
         periodPlanDuration: rr.periodPlanDuration,
         periodActualStart: rr.periodActualStart,
         periodActualDuration: rr.periodActualDuration,
-        percentComplete: rr.percent,
+        percentComplete,
       });
     }
     return result;

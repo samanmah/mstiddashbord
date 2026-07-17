@@ -1,9 +1,14 @@
 /**
  * سازندهٔ Fixture اکسل گانت — Sanitized و قطعی (Deterministic).
- * این Fixture ساختار و شمارش‌های فایل واقعی را بازتولید می‌کند بدون هیچ دادهٔ محرمانه،
- * تا تست‌ها در CI بدون نیاز به فایل واقعی و بدون Commit فایل خام اجرا شوند.
+ * ساختار فایل واقعی را بازتولید می‌کند بدون هیچ عنوان/دادهٔ محرمانه.
  *
- * مرجع اعداد: docs/project-control/source-analysis.md
+ * پوشش ویژه:
+ * - Header ردیف ۳، Period index ردیف ۴، Data از ردیف ۵
+ * - Phase/Break merge + fill-down
+ * - عنوان Activity شامل «روز» و Break1 شامل «ماه» (نباید Totals شوند)
+ * - Totals با «جمع کل» + برچسب‌های Exact «روز»/«ماه»
+ * - Percent مقیاس 0..1، Percent صفر، Budget صفر
+ * - تاریخ "-"، ارقام فارسی، ستون‌های O+
  */
 import ExcelJS from 'exceljs';
 
@@ -16,9 +21,9 @@ const BUDGETS = [875_000_000, 15_000_000_000, 150_000_000_000, 300_000_000_000, 
 const OWNER_ROWS = 65;
 const DOD_ROWS = 48;
 const PROGRESS_ROWS = 104;
-const DATE_ROWS = 65; // غیرخالی
-const VALID_DATE_ROWS = 60; // معتبر (۵ نامعتبر)
+const VALID_DATE_ROWS = 60;
 const DATE_MIN = '1404/09/01';
+const DATE_MIN_FA = '۱۴۰۴/۰۹/۰۱';
 const DATE_MAX = '1406/12/10';
 
 const HEADER_ROW = 3;
@@ -123,43 +128,56 @@ export async function buildGanttFixtureBuffer(): Promise<Buffer> {
 
   for (const s of specs) {
     const r = s.excelRow;
-    // Break2 عنوان با تورفتگی
-    const title = `فعالیت ${s.gidx + 1}`;
+    // عنوان‌های شامل «روز»/«ماه» برای اطمینان از عدم False-positive Totals
+    let title = `فعالیت ${s.gidx + 1}`;
+    if (s.gidx === 0) title = `فعالیت نمونه روز اول`;
+    if (s.gidx === 1) title = `بررسی گزارش ماه جاری`;
     ws.getCell(r, COL.break2).value = `${' '.repeat(s.indent)}${title}`;
 
-    // Phase (مقدار فقط روی ردیف اول، سپس Merge)
     if (s.phaseFirstRow) {
       ws.getCell(r, COL.phase).value = `فاز ${s.phaseIndex + 1}`;
     }
-    // Break1 (مقدار روی ردیف اول گروه)
     if (s.break1GroupFirstRow) {
-      ws.getCell(r, COL.break1).value = `شکست ${s.phaseIndex + 1}-${s.break1Idx}`;
+      // یک Break1 با کلمه «ماه» در وسط عنوان (نباید Totals شود)
+      if (s.phaseIndex === 0 && s.break1Idx === 2) {
+        ws.getCell(r, COL.break1).value = `شکست ماهانه ${s.phaseIndex + 1}-${s.break1Idx}`;
+      } else {
+        ws.getCell(r, COL.break1).value = `شکست ${s.phaseIndex + 1}-${s.break1Idx}`;
+      }
     }
 
-    // مسئول / DOD / درصد
     if (s.gidx < OWNER_ROWS) ws.getCell(r, COL.owner).value = `مسئول ${s.gidx + 1}`;
     if (s.gidx < DOD_ROWS) ws.getCell(r, COL.dod).value = `تعریف اتمام ${s.gidx + 1}`;
-    if (s.gidx < PROGRESS_ROWS) ws.getCell(r, COL.percent).value = 50;
 
-    // تاریخ‌ها: ۶۵ غیرخالی، ۶۰ معتبر، ۵ نامعتبر
-    if (s.gidx < DATE_ROWS) {
-      if (s.gidx < VALID_DATE_ROWS) {
-        ws.getCell(r, COL.start).value = DATE_MIN;
-        ws.getCell(r, COL.finish).value = DATE_MAX;
-      } else {
-        ws.getCell(r, COL.start).value = 'نامشخص';
-        ws.getCell(r, COL.finish).value = 'نامشخص';
-      }
+    // Percent در مقیاس 0..1 (با یک صفر معتبر)
+    if (s.gidx < PROGRESS_ROWS) {
+      ws.getCell(r, COL.percent).value = s.gidx === 2 ? 0 : 0.5;
+    }
+
+    // تاریخ: ۶۰ معتبر + ۵ خط تیره (null) — یک تاریخ با ارقام فارسی
+    if (s.gidx < VALID_DATE_ROWS) {
+      ws.getCell(r, COL.start).value = s.gidx === 0 ? DATE_MIN_FA : DATE_MIN;
+      ws.getCell(r, COL.finish).value = DATE_MAX;
+    } else if (s.gidx < VALID_DATE_ROWS + 5) {
+      ws.getCell(r, COL.start).value = '-';
+      ws.getCell(r, COL.finish).value = '—';
+    }
+
+    // نمونه مقدار دوره‌ای در O
+    if (s.gidx < 3) {
+      ws.getCell(r, COL.firstPeriod).value = s.gidx === 0 ? 1 : 0;
     }
   }
 
-  // بودجه: ۵ ردیف در فاز ۵ (متن با پسوند «تومان»)
+  // بودجه: ۵ ردیف مثبت + یک صفر معتبر
   const phase5FirstGidx = PHASE_COUNTS.slice(0, 4).reduce((a, b) => a + b, 0);
   BUDGETS.forEach((amount, i) => {
     const gidx = phase5FirstGidx + i;
     const spec = specs.find((s) => s.gidx === gidx)!;
     ws.getCell(spec.excelRow, COL.budget).value = `${amount.toLocaleString('en-US')} تومان`;
   });
+  const zeroBudgetSpec = specs.find((s) => s.gidx === phase5FirstGidx + BUDGETS.length)!;
+  ws.getCell(zeroBudgetSpec.excelRow, COL.budget).value = 0;
 
   // Merge فازها و Break1ها
   const mergedPhases = new Set<number>();
@@ -176,12 +194,64 @@ export async function buildGanttFixtureBuffer(): Promise<Buffer> {
     }
   }
 
-  // ردیف‌های جمع «روز»/«ماه»
+  // ردیف‌های جمع: «جمع کل» + Exact «روز»/«ماه»
   const totalsRow = FIRST_DATA_ROW + 142; // 147
-  ws.getCell(totalsRow, COL.break1).value = 'روز';
-  ws.getCell(totalsRow, COL.break2).value = TOTAL_DAYS;
+  ws.getCell(totalsRow, COL.break1).value = 'جمع کل';
+  ws.getCell(totalsRow + 1, COL.break1).value = 'روز';
+  ws.getCell(totalsRow + 1, COL.break2).value = TOTAL_DAYS;
   ws.getCell(totalsRow + 2, COL.break1).value = 'ماه';
   ws.getCell(totalsRow + 2, COL.break2).value = TOTAL_MONTHS;
+
+  const arr = await wb.xlsx.writeBuffer();
+  return Buffer.from(arr);
+}
+
+/** Fixture کوچک برای تست‌های Totals/Percent بدون ۱۴۲ ردیف. */
+export async function buildSanitizedEdgeFixtureBuffer(): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('گانت');
+
+  ws.getCell(3, 2).value = 'Phase';
+  ws.getCell(3, 3).value = 'Break1';
+  ws.getCell(3, 4).value = 'Break 2';
+  ws.getCell(3, 5).value = 'تاریخ شروع';
+  ws.getCell(3, 6).value = 'تاریخ پایان';
+  ws.getCell(3, 7).value = 'مبلغ پیشنهادی';
+  ws.getCell(3, 14).value = 'PERCENT COMPLETE';
+  ws.getCell(3, 15).value = 'PERIODS';
+  ws.getCell(4, 15).value = 1;
+  ws.getCell(4, 16).value = 2;
+
+  // Phase + Break1 merge across rows 5-7
+  ws.getCell(5, 2).value = 'فاز آزمایشی';
+  ws.getCell(5, 3).value = 'شکست ماهانه نمونه';
+  ws.mergeCells(5, 2, 7, 2);
+  ws.mergeCells(5, 3, 7, 3);
+
+  ws.getCell(5, 4).value = 'فعالیت شامل کلمه روز کاری';
+  ws.getCell(5, 5).value = '1404/01/01';
+  ws.getCell(5, 6).value = '1404/01/10';
+  ws.getCell(5, 7).value = 0;
+  ws.getCell(5, 14).value = 0;
+  ws.getCell(5, 15).value = 1;
+
+  ws.getCell(6, 4).value = '  زیرفعالیت ماه جاری';
+  ws.getCell(6, 5).value = '-';
+  ws.getCell(6, 6).value = '–';
+  ws.getCell(6, 14).value = 0.25;
+  ws.getCell(6, 15).value = 0;
+
+  ws.getCell(7, 4).value = 'فعالیت پایانی';
+  ws.getCell(7, 5).value = '۱۴۰۴/۰۲/۰۱';
+  ws.getCell(7, 6).value = '1404/02/20';
+  ws.getCell(7, 14).value = 1;
+
+  ws.getCell(8, 3).value = 'جمع کل';
+  ws.getCell(9, 3).value = 'مجموع دوره';
+  ws.getCell(10, 3).value = 'روز';
+  ws.getCell(10, 4).value = 30;
+  ws.getCell(11, 3).value = 'ماه';
+  ws.getCell(11, 4).value = 1;
 
   const arr = await wb.xlsx.writeBuffer();
   return Buffer.from(arr);
