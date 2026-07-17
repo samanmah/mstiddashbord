@@ -36,6 +36,24 @@ test.describe('احراز هویت و دسترسی مشاهده‌گر', () => {
     await expect(page.getByTestId('admin-shell')).toHaveCount(0);
   });
 
+  test('Viewer دکمه ویرایش داشبورد را نمی‌بیند و دسترسی مستقیم کنترل ممنوع است', async ({
+    page,
+  }) => {
+    const projectId = getFixtureProjectId();
+    await assertFixtureProject(page.request, projectId);
+    await page.goto(`/dashboard/projects/${projectId}`);
+    await assertAuthMe(page, 'viewer');
+    await expect(page.getByTestId('advanced-dashboard')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('executive-kpis')).toBeVisible();
+    await expect(page.getByTestId('edit-project-button')).toHaveCount(0);
+    await expect(page.getByTestId('edit-project-footer-link')).toHaveCount(0);
+
+    await page.goto(`/admin/projects/${projectId}/control`);
+    await assertAuthMe(page, 'viewer');
+    await expect(page.getByTestId('forbidden-notice')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('admin-shell')).toHaveCount(0);
+  });
+
   test('۱۰) خروج از حساب', async ({ page }) => {
     await page.goto('/dashboard');
     await assertAuthMe(page, 'viewer');
@@ -79,5 +97,23 @@ test.describe('ویرایشگر و تغییر داده', () => {
     await expect(page.getByText(/وزن|مجموع وزن|فعالیت/).first()).toBeVisible({
       timeout: 15_000,
     });
+  });
+
+  test('Editor از داشبورد پیشرفته با دکمه ویرایش پروژه وارد کنترل می‌شود', async ({ page }) => {
+    const projectId = getFixtureProjectId();
+    await assertFixtureProject(page.request, projectId);
+    await page.goto(`/dashboard/projects/${projectId}`);
+    await assertAuthMe(page, 'editor');
+    await expect(page.getByTestId('advanced-dashboard')).toBeVisible({ timeout: 20_000 });
+
+    const editBtn = page.getByTestId('edit-project-button');
+    await expect(editBtn).toBeVisible();
+    await expect(editBtn).toHaveAccessibleName('ویرایش پروژه');
+    await expect(editBtn).toHaveText('ویرایش پروژه');
+    await editBtn.click();
+
+    await expect(page).toHaveURL(new RegExp(`/admin/projects/${projectId}/control$`));
+    await expect(page.getByTestId('admin-shell')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('forbidden-notice')).toHaveCount(0);
   });
 });

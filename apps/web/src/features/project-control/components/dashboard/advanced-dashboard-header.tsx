@@ -10,6 +10,7 @@ import {
   Maximize2,
   Minimize2,
   MonitorPlay,
+  PencilLine,
   Printer,
   RefreshCw,
 } from 'lucide-react';
@@ -24,6 +25,8 @@ import { jalaliFa } from '../../utils/date-format';
 
 interface Props {
   dashboard: ControlDashboard;
+  projectId: string;
+  isEditor: boolean;
   projectCode?: string | null;
   activeBaselineTitle?: string | null;
   isFullscreen: boolean;
@@ -36,6 +39,8 @@ interface Props {
 /** هدر داشبورد مدیریتی «کنترل پروژه» (Read-only). */
 export function AdvancedDashboardHeader({
   dashboard,
+  projectId,
+  isEditor,
   projectCode,
   activeBaselineTitle,
   isFullscreen,
@@ -122,9 +127,21 @@ export function AdvancedDashboardHeader({
       {/* نوار وضعیت + ابزار */}
       <div className="no-print relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3">
         <div className="flex flex-wrap items-center gap-1.5">
+          {isEditor ? (
+            <ToolbarButton
+              icon={<PencilLine className="h-4 w-4" aria-hidden />}
+              label="ویرایش پروژه"
+              variant="primary"
+              testId="edit-project-button"
+              onClick={() => {
+                router.push(`/admin/projects/${projectId}/control`);
+              }}
+            />
+          ) : null}
           <ToolbarButton
             icon={<RefreshCw className="h-4 w-4" aria-hidden />}
             label="تازه‌سازی"
+            testId="refresh-dashboard-button"
             onClick={onRefresh}
           />
           <ToolbarButton
@@ -136,17 +153,20 @@ export function AdvancedDashboardHeader({
               )
             }
             label={isFullscreen ? 'خروج از تمام‌صفحه' : 'تمام‌صفحه'}
+            testId="fullscreen-dashboard-button"
             onClick={onToggleFullscreen}
           />
           <ToolbarButton
             icon={<MonitorPlay className="h-4 w-4" aria-hidden />}
             label={isWallboard ? 'حالت عادی' : 'حالت نمایشگر'}
+            testId="wallboard-dashboard-button"
             onClick={onToggleWallboard}
             variant={isWallboard ? 'primary' : 'ghost'}
           />
           <ToolbarButton
             icon={<Printer className="h-4 w-4" aria-hidden />}
             label="چاپ / PDF"
+            testId="print-dashboard-button"
             onClick={() => window.print()}
           />
         </div>

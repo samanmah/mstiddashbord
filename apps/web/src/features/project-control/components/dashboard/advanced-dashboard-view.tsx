@@ -13,6 +13,7 @@ import {
   TriangleAlert,
   Users,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
@@ -45,10 +46,12 @@ import { SCurveChart } from './s-curve-chart';
 
 const AUTO_REFRESH_MS = 60_000;
 
-/** داشبورد مدیریتی «کنترل پروژهٔ پیشرفته» (Read-only Viewer). */
+/** داشبورد مدیریتی «کنترل پروژهٔ پیشرفته» (Read-only). */
 export function AdvancedDashboardView({ projectId }: { projectId: string }): React.JSX.Element {
   const queryClient = useQueryClient();
-  const { isEditor } = useAuth();
+  const { isEditor, isLoading: isAuthLoading } = useAuth();
+  /** فقط پس از اتمام auth/me — جلوگیری از Flash دکمهٔ ویرایش برای Viewer */
+  const showEditorActions = !isAuthLoading && isEditor;
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isWallboard, setIsWallboard] = useState(false);
   const [phaseFilter, setPhaseFilter] = useState<string>('ALL');
@@ -176,6 +179,8 @@ export function AdvancedDashboardView({ projectId }: { projectId: string }): Rea
     >
       <AdvancedDashboardHeader
         dashboard={data}
+        projectId={projectId}
+        isEditor={showEditorActions}
         projectCode={projectQuery.data?.projectCode}
         activeBaselineTitle={activeBaselineTitle}
         isFullscreen={isFullscreen}
@@ -323,10 +328,19 @@ export function AdvancedDashboardView({ projectId }: { projectId: string }): Rea
         </Card>
       </div>
 
-      {isEditor ? (
-        <p className="no-print text-center text-[11px] text-grayx-header">
-          این نمای مدیریتی فقط خواندنی است. برای ویرایش به بخش «کنترل پروژه پیشرفته» در مدیریت پروژه
-          مراجعه کنید.
+      {showEditorActions ? (
+        <p
+          data-testid="editor-readonly-notice"
+          className="no-print flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-[11px] text-grayx-header"
+        >
+          <span>این داشبورد نمای مدیریتی و فقط‌خواندنی است.</span>
+          <Link
+            href={`/admin/projects/${projectId}/control`}
+            data-testid="edit-project-footer-link"
+            className="font-medium text-accent-blue underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1"
+          >
+            ورود به ویرایش پروژه
+          </Link>
         </p>
       ) : null}
     </div>

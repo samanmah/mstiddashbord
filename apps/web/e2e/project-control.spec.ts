@@ -178,6 +178,8 @@ test.describe('کنترل پروژه — Viewer و Regression', () => {
     await expect(page.getByTestId('dashboard-project-title')).toHaveText(fixture.titleFa);
     await expect(page.getByTestId('phase-card')).toHaveCount(7);
     await expect(page.getByTestId('project-control-tab')).toHaveCount(0);
+    await expect(page.getByTestId('edit-project-button')).toHaveCount(0);
+    await expect(page.getByTestId('edit-project-footer-link')).toHaveCount(0);
   });
 
   test('۹) Viewer به /admin دسترسی ندارد', async ({ page }) => {
