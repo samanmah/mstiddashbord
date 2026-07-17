@@ -24,7 +24,9 @@ describe('assert-compose-release.py', () => {
   it('وقتی image و SHA درست باشند PASS می‌کند', () => {
     const r = run(
       {
+        name: 'ppm',
         services: {
+          postgres: { image: 'postgres:18-alpine' },
           api: {
             image: api,
             environment: { APP_VERSION: full, GIT_SHA: full, POSTGRES_PASSWORD: 'x' },
@@ -32,7 +34,16 @@ describe('assert-compose-release.py', () => {
           web: { image: web, environment: {} },
         },
       },
-      ['--api-image', api, '--web-image', web, '--full-sha', full],
+      [
+        '--api-image',
+        api,
+        '--web-image',
+        web,
+        '--full-sha',
+        full,
+        '--project-name',
+        'ppm',
+      ],
     );
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /COMPOSE_RELEASE_ASSERT=PASS/);
@@ -42,6 +53,7 @@ describe('assert-compose-release.py', () => {
     const r = run(
       {
         services: {
+          postgres: { image: 'postgres:18-alpine' },
           api: {
             image: api,
             environment: {
@@ -62,6 +74,7 @@ describe('assert-compose-release.py', () => {
     const r = run(
       {
         services: {
+          postgres: { image: 'postgres:18-alpine' },
           api: {
             image: api,
             environment: { APP_VERSION: full, GIT_SHA: full },
@@ -75,5 +88,22 @@ describe('assert-compose-release.py', () => {
     );
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /web\.image/);
+  });
+
+  it('وقتی postgres service نباشد Fail می‌کند', () => {
+    const r = run(
+      {
+        services: {
+          api: {
+            image: api,
+            environment: { APP_VERSION: full, GIT_SHA: full },
+          },
+          web: { image: web },
+        },
+      },
+      ['--api-image', api, '--web-image', web, '--full-sha', full],
+    );
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /postgres/);
   });
 });
