@@ -23,11 +23,14 @@ import {
   IMPORT_BATCH_ID_MISSING_MESSAGE,
 } from '../../api/project-control-api';
 import {
+  ImportCommitMode,
   ImportIssueLevel,
   type ControlImportCommitResult,
   type ControlImportPreview,
+  type ImportCommitModeType,
 } from '../../api/project-control-types';
 import {
+  useActivateControlPlan,
   useCommitImport,
   useMapImport,
   useMppCheck,
@@ -72,6 +75,7 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
   const [preview, setPreview] = useState<ControlImportPreview | null>(null);
   const [decisions, setDecisions] = useState<Record<number, ConflictDecision>>({});
   const [allowWarnings, setAllowWarnings] = useState(false);
+  const [commitMode, setCommitMode] = useState<ImportCommitModeType | null>(null);
   const [result, setResult] = useState<ControlImportCommitResult | null>(null);
 
   const upload = useUploadImport(projectId);
@@ -79,7 +83,15 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
   const mapMut = useMapImport(projectId);
   const validateMut = useValidateImport(projectId);
   const commitMut = useCommitImport(projectId);
+  const activatePlanMut = useActivateControlPlan(projectId);
   const mppCheck = useMppCheck(projectId);
+
+  const resolvedCommitMode: ImportCommitModeType =
+    commitMode ??
+    preview?.suggestedCommitMode ??
+    (preview?.existingCommittedImport
+      ? ImportCommitMode.REUSE_EXISTING
+      : ImportCommitMode.CREATE_NEW_VERSION);
 
   const onSelectFile = (f: File | null): void => {
     if (!f) return;
@@ -117,6 +129,7 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
             {
               onSuccess: (p) => {
                 setPreview(p);
+                setCommitMode(p.suggestedCommitMode);
                 setStep(1);
               },
               onError: (e) =>
@@ -178,16 +191,32 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
   const runCommit = (): void => {
     if (!batchId) return;
     commitMut.mutate(
-      { id: batchId, allowWarnings },
+      { id: batchId, allowWarnings, mode: resolvedCommitMode },
       {
         onSuccess: (r) => {
           setResult(r);
           setStep(7);
-          toast.success('ورود اطلاعات با موفقیت ثبت شد');
+          toast.success(
+            r.reusedExisting
+              ? 'از نسخهٔ موجود Import استفاده شد'
+              : 'نسخهٔ جدید برنامه کنترل با موفقیت ثبت شد',
+          );
         },
         onError: (e) => toast.error(isApiError(e) ? e.message : 'ثبت نهایی ناموفق بود'),
       },
     );
+  };
+
+  const runRollback = (): void => {
+    if (!result?.previousControlPlanId || !result.rollbackAvailable) return;
+    const ok = window.confirm(
+      'آیا از بازگشت به نسخهٔ قبلی برنامه کنترل مطمئن هستید؟ نسخهٔ فعلی غیرفعال می‌شود ولی حذف نمی‌گردد.',
+    );
+    if (!ok) return;
+    activatePlanMut.mutate(result.previousControlPlanId, {
+      onSuccess: () => toast.success('بازگشت به نسخهٔ قبلی انجام شد'),
+      onError: (e) => toast.error(isApiError(e) ? e.message : 'بازگشت ناموفق بود'),
+    });
   };
 
   const criticalBlock = preview ? preview.criticalCount > 0 || !preview.canCommit : true;
@@ -321,17 +350,47 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
       {/* Step 6: Commit */}
       {step === 6 && preview ? (
         <div className="card space-y-4 p-4">
-          <h3 className="text-sm font-bold text-navy-900">ثبت نهایی (اتمیک)</h3>
-          <p className="text-sm text-grayx-header">
-            این عملیات به‌صورت اتمیک انجام می‌شود؛ در صورت بروز خطا هیچ تغییری اعمال نمی‌شود (Rollback
-            کامل).
+          <h3 className="text-sm font-bold text-navy-900">ثبت نهایی (اتمیک و نسخه‌دار)</h3>
+          <p className="rounded bg-brand-blue/8 p-3 text-sm text-navy-900">
+            ثبت نهایی یک نسخه جدید از برنامه کنترل پروژه ایجاد می‌کند و نسخه فعلی را برای بازگشت حفظ
+            می‌کند.
           </p>
+          <PeriodMatrixPanel preview={preview} />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <SummaryStat label="نودهای جدید" value={preview.counts.totalNodes} />
-            <SummaryStat label="تعارض‌ها" value={preview.conflicts.length} />
-            <SummaryStat label="هشدارها" value={preview.warningCount} />
+            <SummaryStat label="نسخهٔ فعلی" value={preview.currentPlanVersion ?? 0} />
+            <SummaryStat label="نسخهٔ جدید" value={preview.nextPlanVersion ?? 1} />
             <SummaryStat label="خطاهای بحرانی" value={preview.criticalCount} tone="red" />
           </div>
+          <p className="text-xs text-grayx-header" dir="ltr">
+            File hash: {preview.fileHash}
+          </p>
+          {preview.existingCommittedImport ? (
+            <div className="space-y-2 rounded border border-borderx p-3">
+              <p className="text-sm font-medium text-navy-900">
+                همین فایل قبلاً Commit شده است (نسخه{' '}
+                {toPersianDigits(String(preview.existingCommittedImport.planVersion))}).
+              </p>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="commit-mode"
+                  checked={resolvedCommitMode === ImportCommitMode.REUSE_EXISTING}
+                  onChange={() => setCommitMode(ImportCommitMode.REUSE_EXISTING)}
+                />
+                استفاده از نسخهٔ موجود (پیش‌فرض امن)
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="commit-mode"
+                  checked={resolvedCommitMode === ImportCommitMode.CREATE_NEW_VERSION}
+                  onChange={() => setCommitMode(ImportCommitMode.CREATE_NEW_VERSION)}
+                />
+                ایجاد نسخهٔ جدید از همان فایل
+              </label>
+            </div>
+          ) : null}
           {preview.warningCount > 0 ? (
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -363,19 +422,50 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
       {step === 7 && result ? (
         <div className="card space-y-4 p-6 text-center">
           <CheckCircle2 className="mx-auto h-10 w-10 text-brand-green" aria-hidden />
-          <h3 className="text-base font-bold text-navy-900">ورود اطلاعات با موفقیت انجام شد</h3>
-          <div className="mx-auto grid max-w-md grid-cols-2 gap-3 text-sm">
+          <h3 className="text-base font-bold text-navy-900">
+            {result.reusedExisting
+              ? 'از نسخهٔ موجود Import استفاده شد'
+              : 'ورود نسخه‌ای با موفقیت انجام شد'}
+          </h3>
+          <div className="mx-auto grid max-w-2xl grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <SummaryStat label="نودهای ایجادشده" value={result.createdNodes} />
-            <SummaryStat label="نودهای به‌روزشده" value={result.updatedNodes} />
+            <SummaryStat label="Snapshot دوره‌ای" value={result.periodSnapshotsCreated} />
+            <SummaryStat label="انتساب‌ها" value={result.assignmentsCreated} />
+            <SummaryStat label="وابستگی‌ها" value={result.dependenciesCreated} />
+            <SummaryStat label="نسخهٔ جدید" value={result.newPlanVersion} />
+            <SummaryStat label="نسخهٔ قبلی" value={result.previousPlanVersion ?? 0} />
           </div>
-          <p className="text-xs text-grayx-header">شناسهٔ دسته: {result.importBatchId}</p>
-          <div className="flex items-center justify-center gap-2">
+          <div className="space-y-1 text-xs text-grayx-header">
+            <p>شناسهٔ دسته: {result.importBatchId}</p>
+            <p>Control Plan: {result.controlPlanId}</p>
+            <p dir="ltr">fileHash: {result.fileHash}</p>
+            <p>
+              active plan switched={String(result.activePlanSwitched)} — rollback available=
+              {String(result.rollbackAvailable)} — duration={faNumber(result.durationMs)}ms
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <Link href={`/admin/projects/${projectId}/control/wbs`}>
-              <Button variant="secondary">مشاهدهٔ WBS</Button>
+              <Button variant="secondary">مشاهده ساختار شکست کار</Button>
             </Link>
-            <Link href={`/admin/projects/${projectId}/control/overview`}>
-              <Button>نمای کلی</Button>
+            <Link href={`/admin/projects/${projectId}/control/gantt`}>
+              <Button variant="secondary">مشاهده گانت</Button>
             </Link>
+            <Link href={`/admin/projects/${projectId}/control/progress`}>
+              <Button variant="secondary">مشاهده پیشرفت</Button>
+            </Link>
+            <Link href={`/admin/projects/${projectId}/control/data-quality`}>
+              <Button variant="secondary">مشاهده کیفیت داده</Button>
+            </Link>
+            {result.rollbackAvailable && result.previousControlPlanId ? (
+              <Button
+                variant="ghost"
+                loading={activatePlanMut.isPending}
+                onClick={runRollback}
+              >
+                بازگشت به نسخه قبلی
+              </Button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -497,9 +587,40 @@ function DryRunPanel({ preview }: { preview: ControlImportPreview }): React.JSX.
         <SummaryStat label="بحرانی" value={preview.criticalCount} tone="red" />
         <SummaryStat label="اطلاع" value={preview.infoCount} />
       </div>
+      <PeriodMatrixPanel preview={preview} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <SummaryStat label="نسخهٔ Plan فعلی" value={preview.currentPlanVersion ?? 0} />
+        <SummaryStat label="نسخهٔ Plan جدید" value={preview.nextPlanVersion ?? 1} />
+        <SummaryStat
+          label="Import موجود"
+          value={preview.existingCommittedImport ? 1 : 0}
+          tone={preview.existingCommittedImport ? 'orange' : 'neutral'}
+        />
+      </div>
       <p className="text-xs text-grayx-header">
-        اجرای آزمایشی هیچ تغییری در پایگاه‌داده ایجاد نمی‌کند. برای ثبت نهایی به مرحلهٔ بعد بروید.
+        حالت پیشنهادی: {preview.suggestedCommitMode} — اجرای آزمایشی هیچ تغییری در پایگاه‌داده ایجاد
+        نمی‌کند.
       </p>
+    </div>
+  );
+}
+
+function PeriodMatrixPanel({ preview }: { preview: ControlImportPreview }): React.JSX.Element {
+  const s = preview.periodMatrixStats;
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-bold text-navy-900">ماتریس دوره‌ای</h4>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <SummaryStat label="ستون‌های دوره‌ای" value={s.periodColumnCount} />
+        <SummaryStat label="مقدار Parse‌شده" value={s.periodSnapshotsParsed} />
+        <SummaryStat label="Planned" value={s.plannedCount} />
+        <SummaryStat label="Actual" value={s.actualCount} />
+        <SummaryStat label="Unknown" value={s.unknownCount} />
+        <SummaryStat label="صفر صریح" value={s.explicitZeroCount} />
+        <SummaryStat label="فرمول" value={s.formulaCount} />
+        <SummaryStat label="فرمول بدون cache" value={s.formulaWithoutCachedResultCount} tone="orange" />
+        <SummaryStat label="Snapshot قابل‌ثبت" value={s.periodSnapshotsParsed} tone="green" />
+      </div>
     </div>
   );
 }

@@ -179,13 +179,20 @@ export const projectControlApi = {
       method: 'POST',
     });
   },
-  commitImport: async (projectId: string, id: string, allowWarnings = false) => {
+  commitImport: async (
+    projectId: string,
+    id: string,
+    allowWarnings = false,
+    mode?: 'CREATE_NEW_VERSION' | 'REUSE_EXISTING',
+  ) => {
     assertImportBatchId(id);
     return apiRequest<ControlImportCommitResult>(`${base(projectId)}/imports/${id}/commit`, {
       method: 'POST',
-      body: { confirm: true, allowWarnings },
+      body: { confirm: true, allowWarnings, ...(mode ? { mode } : {}) },
     });
   },
+  activateControlPlan: (projectId: string, planId: string) =>
+    apiRequest(`${base(projectId)}/plans/${planId}/activate`, { method: 'POST' }),
   listImports: (projectId: string) =>
     apiRequest<ImportBatchDto[]>(`${base(projectId)}/imports`),
   getImport: async (projectId: string, id: string) => {

@@ -50,6 +50,20 @@ export function StructurePreview({ preview }: { preview: ControlImportPreview })
         />
         <MetricCard label="تعداد دوره‌ها" value={formatCount(m.periodCount)} />
       </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <MetricCard
+          label="ستون دوره‌ای"
+          value={formatCount(preview.periodMatrixStats.periodColumnCount)}
+        />
+        <MetricCard
+          label="Snapshot Parse‌شده"
+          value={formatCount(preview.periodMatrixStats.periodSnapshotsParsed)}
+          tone="green"
+        />
+        <MetricCard label="Planned" value={formatCount(preview.periodMatrixStats.plannedCount)} />
+        <MetricCard label="Actual" value={formatCount(preview.periodMatrixStats.actualCount)} />
+      </div>
     </div>
   );
 }

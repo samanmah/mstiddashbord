@@ -27,6 +27,8 @@ export {
   ControlImportSourceType,
   ControlImportStatus,
   ImportMatchStatus,
+  ImportCommitMode,
+  PeriodValueType,
   PHASE_COLORS,
   CONTROL_STATUS_COLORS,
   CONTROL_NODE_STATUS_LABELS,
@@ -46,6 +48,8 @@ export type {
   UploadImportResult,
   MppEnvironmentStatus,
   ParsedWbsRow,
+  PeriodMatrixStats,
+  ImportCommitMode as ImportCommitModeType,
 } from '@ppm/contracts';
 
 export { ImportIssueLevel, EXPECTED_EXCEL_MANIFEST } from '@ppm/contracts';

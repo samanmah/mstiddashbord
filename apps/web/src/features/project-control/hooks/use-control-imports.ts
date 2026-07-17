@@ -54,14 +54,34 @@ export function useValidateImport(projectId: string) {
 export function useCommitImport(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, allowWarnings = false }: { id: string; allowWarnings?: boolean }) =>
-      projectControlApi.commitImport(projectId, id, allowWarnings),
+    mutationFn: ({
+      id,
+      allowWarnings = false,
+      mode,
+    }: {
+      id: string;
+      allowWarnings?: boolean;
+      mode?: 'CREATE_NEW_VERSION' | 'REUSE_EXISTING';
+    }) => projectControlApi.commitImport(projectId, id, allowWarnings, mode),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: controlKeys.wbs(projectId) });
       void qc.invalidateQueries({ queryKey: controlKeys.dashboard(projectId) });
       void qc.invalidateQueries({ queryKey: controlKeys.gantt(projectId) });
       void qc.invalidateQueries({ queryKey: controlKeys.imports(projectId) });
       void qc.invalidateQueries({ queryKey: controlKeys.dataQuality(projectId) });
+    },
+  });
+}
+
+export function useActivateControlPlan(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (planId: string) => projectControlApi.activateControlPlan(projectId, planId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: controlKeys.wbs(projectId) });
+      void qc.invalidateQueries({ queryKey: controlKeys.dashboard(projectId) });
+      void qc.invalidateQueries({ queryKey: controlKeys.gantt(projectId) });
+      void qc.invalidateQueries({ queryKey: controlKeys.imports(projectId) });
     },
   });
 }
