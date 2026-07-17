@@ -52,7 +52,8 @@ export function normalizeUsername(input: string): string {
   return toLatinDigits(input.trim().toLowerCase());
 }
 
-const NULL_TOKENS = new Set(['', '-', '—', 'none', 'null', 'nan', 'n/a', 'na']);
+/** خط تیره و توکن‌های تهی — تاریخ/متن خالی (شامل en-dash U+2013). */
+const NULL_TOKENS = new Set(['', '-', '—', '–', 'none', 'null', 'nan', 'n/a', 'na']);
 
 /** تبدیل مقدار خام سلول به رشته یا null. */
 export function normalizeCellString(value: unknown): string | null {

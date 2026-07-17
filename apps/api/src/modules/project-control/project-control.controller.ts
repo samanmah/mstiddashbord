@@ -33,6 +33,17 @@ export class ProjectControlController {
     return this.control.getActivePlanOrNull(projectId);
   }
 
+  @Post('plans/:planId/activate')
+  @Roles(UserRole.PROJECT_EDITOR)
+  @ApiOperation({ summary: 'فعال‌سازی مجدد یک Control Plan (Rollback نسخه‌ای)' })
+  activatePlan(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Param('planId', ParseUUIDPipe) planId: string,
+    @Req() req: Request,
+  ) {
+    return this.control.activatePlan(projectId, planId, getRequestContext(req));
+  }
+
   @Get('dashboard')
   @ApiOperation({ summary: 'داشبورد مدیریتی یکپارچه (Aggregated)' })
   dashboard(@Param('projectId', ParseUUIDPipe) projectId: string) {

@@ -4,6 +4,11 @@ import { BaselinesController } from './baselines.controller';
 import { BaselinesService } from './baselines.service';
 import { DependenciesController } from './dependencies.controller';
 import { DependenciesService } from './dependencies.service';
+import { ControlImportController } from './import/control-import.controller';
+import { ControlImportService } from './import/control-import.service';
+import { GanttExcelParserService } from './import/gantt-excel-parser.service';
+import { MPP_ADAPTER } from './import/mpp/mpp-adapter.interface';
+import { MpxjMppAdapter } from './import/mpp/mpxj-mpp.adapter';
 import { ProgressController } from './progress.controller';
 import { ProgressService } from './progress.service';
 import { ProjectControlController } from './project-control.controller';
@@ -21,6 +26,7 @@ import { WbsService } from './wbs.service';
     DependenciesController,
     ProgressController,
     BaselinesController,
+    ControlImportController,
   ],
   providers: [
     ProjectControlService,
@@ -30,7 +36,11 @@ import { WbsService } from './wbs.service';
     DependenciesService,
     ProgressService,
     BaselinesService,
+    ControlImportService,
+    GanttExcelParserService,
+    MpxjMppAdapter,
+    { provide: MPP_ADAPTER, useExisting: MpxjMppAdapter },
   ],
-  exports: [ProjectControlService, ProjectControlCalculationService],
+  exports: [ProjectControlService, ProjectControlCalculationService, ControlImportService],
 })
 export class ProjectControlModule {}

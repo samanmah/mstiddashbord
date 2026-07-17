@@ -29,7 +29,10 @@ export const authService = {
       body: payload,
       retryOnUnauthorized: false,
     }),
-  me: () => apiRequest<AuthUser>('/auth/me'),
+  me: async (): Promise<AuthUser> => {
+    const response = await apiRequest<{ user: AuthUser }>('/auth/me');
+    return response.user;
+  },
   logout: () => apiRequest<void>('/auth/logout', { method: 'POST' }),
   changePassword: (payload: { currentPassword: string; newPassword: string }) =>
     apiRequest<void>('/auth/change-password', { method: 'POST', body: payload }),

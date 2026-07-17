@@ -52,3 +52,52 @@ Parent Mapping → Field Mapping → Data Quality → Preview → Dry-Run → Co
 - Dry-Run: تمام اعتبارسنجی‌ها بدون نوشتن؛ گزارش Count/Conflict/Warning.
 - Commit: در یک Transaction؛ خطا → Rollback کامل (هیچ دادهٔ نیمه‌کاره).
 - ثبت `ImportBatch(status,totalRows,importedRows,warningRows,failedRows,validationReport,mappingReport)`.
+
+## 8. API Import (نسخهٔ `/api/v1`)
+تمام Mutationها فقط با نقش `PROJECT_EDITOR`:
+
+```
+POST /api/v1/projects/:projectId/control/imports/upload      # بارگذاری xlsx/xlsm/mpp → ImportBatch
+POST /api/v1/projects/:projectId/control/imports/:id/preview # Dry-Run + Manifest (پیش‌فرض dryRun=true)
+POST /api/v1/projects/:projectId/control/imports/:id/map      # Mapping/Conflict دستی
+POST /api/v1/projects/:projectId/control/imports/:id/validate # اعتبارسنجی کامل بدون ذخیره
+POST /api/v1/projects/:projectId/control/imports/:id/commit   # Commit اتمیک (confirm=true الزامی)
+GET  /api/v1/projects/:projectId/control/imports              # فهرست
+GET  /api/v1/projects/:projectId/control/imports/:id          # جزئیات
+GET  /api/v1/projects/:projectId/control/imports/:id/errors   # خطاها/هشدارها
+GET  /api/v1/projects/:projectId/control/imports/mpp-check    # وضعیت محیط MPP
+```
+
+اعتبارسنجی آپلود: پسوند (`xlsx/xlsm/mpp`) + MIME + Magic bytes (`PK..` برای Excel، `D0CF11E0` برای MPP)،
+حداکثر حجم `VALIDATION.UPLOAD_MAX_BYTES`، ذخیره با نام تصادفی زیر `<upload>/project-control`.
+
+## 9. CLI Import
+پیش‌فرض Dry-Run است؛ بدون `--commit` هیچ نوشتنی رخ نمی‌دهد. فایل خام/Secret در Log چاپ نمی‌شود.
+
+```bash
+# Dry-Run
+pnpm --filter @ppm/api project-control:import -- \
+  --project-id <UUID> --excel "<PATH.xlsx>" [--mpp "<PATH.mpp>"] --dry-run
+
+# Commit اتمیک
+pnpm --filter @ppm/api project-control:import -- \
+  --project-id <UUID> --excel "<PATH.xlsx>" [--mpp "<PATH.mpp>"] --commit
+```
+
+Exit Code: `0` موفق، `2` خطای بحرانی/عدم تطابق Manifest، `1` خطای اجرا.
+
+## 10. MPP و پیش‌نیاز Java (مستندسازی)
+- تجزیهٔ MPP از طریق **Adapter ایزولهٔ MPXJ** انجام می‌شود که فقط پشت `MppAdapter` قرار دارد؛
+  بنابراین تست‌های Backend به Java روی سیستم توسعه وابسته نیستند (از `FixtureMppAdapter` و Fixture
+  نسخه‌بندی‌شدهٔ Sanitized استفاده می‌شود).
+- پیش‌نیاز اجرای واقعی MPP: نصب **Java Runtime** و تنظیم متغیر محیطی **`MPXJ_HELPER_JAR`** به مسیر
+  Helper Jar مبتنی بر MPXJ. مسیر فایل هرگز وارد Shell نمی‌شود (`execFile` با آرایهٔ آرگومان، Timeout و
+  محدودیت حافظه).
+- در نبود Java/MPXJ، API و CLI خطای **کنترل‌شدهٔ فارسی** می‌دهند (نه Crash). فرمان تشخیصی:
+
+```bash
+pnpm --filter @ppm/api project-control:mpp-check [-- --file "<PATH.mpp>"]
+```
+
+خروجی: وجود `java` در PATH، نسخهٔ Java، حضور/نسخهٔ Adapter، وجود MPXJ Helper، دسترسی فایل و پیام وضعیت.
+Exit Code: `0` آماده، `3` MPP در دسترس نیست (بدون خطای اجرا).

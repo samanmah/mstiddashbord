@@ -17,8 +17,11 @@ apps/api/prisma/migrations/**/migration_lock.toml.bak
 .env
 .env.local
 .env.*.local
+.env.staging
+.env.production
 *.env
 !.env.example
+!.env.staging.example
 
 # Logs
 logs/
@@ -32,6 +35,7 @@ coverage/
 playwright-report/
 test-results/
 apps/web/playwright/.auth/
+apps/web/e2e/.auth/
 
 # Uploads (user files must not be committed)
 uploads/
@@ -46,6 +50,9 @@ references/project-control/*.mpx
 references/project-control/*.xml
 # Local, non-committed analysis scratch space
 references/project-control/_scratch/
+
+# Local real inputs, audits, and validation scripts (never track)
+.local/
 
 # Database backups
 backups/

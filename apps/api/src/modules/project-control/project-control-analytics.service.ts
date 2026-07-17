@@ -1,14 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import {
   ControlNodeStatus,
+  type ControlGanttTimelineDto,
   type DataQualityReport,
   dateToJalaliString,
   type NodeComputation,
   type PhaseRollupDto,
+  TimelineClassification,
   WbsNodeType,
 } from '@ppm/contracts';
 import { type Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { countDerivedBarCells } from './import/gantt-cf-evaluator';
 import { ProjectControlCalculationService } from './project-control-calculation.service';
 import { ProjectControlService } from './project-control.service';
 import { decimalToString, jalaliOrNull, mapWbsNode } from './wbs.mapper';
@@ -293,9 +296,78 @@ export class ProjectControlAnalyticsService {
     }));
   }
 
-  async gantt(projectId: string): Promise<WbsNodeDtoComputed[]> {
-    const { nodes, computed } = await this.load(projectId);
-    return nodes.map((n) => ({ ...mapWbsNode(n), computed: computed.get(n.id)! }));
+  async gantt(projectId: string): Promise<{
+    nodes: WbsNodeDtoComputed[];
+    timeline: ControlGanttTimelineDto;
+  }> {
+    const { plan, nodes, computed } = await this.load(projectId);
+    const [periods, spans, snapshotCount, importBatch] = await Promise.all([
+      this.prisma.controlPeriodColumn.findMany({
+        where: { controlPlanId: plan.id },
+        orderBy: { periodIndex: 'asc' },
+      }),
+      this.prisma.nodeGanttSpan.findMany({
+        where: { controlPlanId: plan.id },
+      }),
+      this.prisma.nodePeriodSnapshot.count({
+        where: { controlPlanId: plan.id },
+      }),
+      this.prisma.importBatch.findFirst({
+        where: { controlPlanId: plan.id, status: 'COMPLETED' },
+        orderBy: { completedAt: 'desc' },
+        select: { validationReport: true },
+      }),
+    ]);
+    const titleById = new Map(nodes.map((n) => [n.id, n.title]));
+    const derivedBarCellCount = countDerivedBarCells(
+      spans.map((s) => ({
+        sourceRow: s.sourceRow ?? 0,
+        spanType: s.spanType,
+        startPeriodIndex: s.startPeriodIndex,
+        endPeriodIndex: s.endPeriodIndex,
+        progressEndPeriodIndex: s.progressEndPeriodIndex,
+        derivationMethod: s.derivationMethod,
+      })),
+    );
+    const report = (importBatch?.validationReport ?? {}) as Record<string, unknown>;
+    const cfFromReport = Number(report.conditionalFormattingRuleCount ?? 0);
+    const timeline: ControlGanttTimelineDto = {
+      timelineClassification:
+        snapshotCount > 0
+          ? TimelineClassification.EXPLICIT_VALUES
+          : spans.length > 0
+            ? TimelineClassification.STYLE_BASED_GANTT
+            : TimelineClassification.EMPTY_PERIOD_MATRIX,
+      periodDefinitions: periods.length,
+      explicitPeriodSnapshots: snapshotCount,
+      derivedGanttSpanCount: spans.length,
+      derivedBarCellCount,
+      conditionalFormattingRuleCount: Number.isFinite(cfFromReport) ? cfFromReport : 0,
+      periods: periods.map((p) => ({
+        id: p.id,
+        periodIndex: p.periodIndex,
+        periodLabel: p.periodLabel,
+        sourceColumn: p.columnLetter,
+        axisType: p.axisType,
+        calendarStart: jalaliOrNull(p.calendarStart),
+        calendarEnd: jalaliOrNull(p.calendarEnd),
+      })),
+      spans: spans.map((s) => ({
+        id: s.id,
+        nodeId: s.nodeId,
+        spanType: s.spanType,
+        startPeriodIndex: s.startPeriodIndex,
+        endPeriodIndex: s.endPeriodIndex,
+        progressEndPeriodIndex: s.progressEndPeriodIndex,
+        sourceRow: s.sourceRow,
+        derivationMethod: s.derivationMethod,
+        nodeTitle: titleById.get(s.nodeId),
+      })),
+    };
+    return {
+      nodes: nodes.map((n) => ({ ...mapWbsNode(n), computed: computed.get(n.id)! })),
+      timeline,
+    };
   }
 }
 

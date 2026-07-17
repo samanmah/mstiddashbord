@@ -46,7 +46,10 @@ export function AuthGuard({ children, requireRole }: AuthGuardProps): React.JSX.
 function ForbiddenNotice(): React.JSX.Element {
   const router = useRouter();
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6 text-center">
+    <div
+      data-testid="forbidden-notice"
+      className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6 text-center"
+    >
       <p className="text-2xl font-bold text-navy-900">۴۰۳ — دسترسی مجاز نیست</p>
       <p className="text-sm text-grayx-header">
         شما مجوز لازم برای مشاهدهٔ این بخش را ندارید.

@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { FullPageSpinner } from '@/components/ui/spinner';
 import { EmptyState, ErrorState } from '@/components/ui/states';
-import { DashboardView } from '@/components/dashboard/dashboard-view';
+import { DashboardRouter } from '@/features/project-control/components/dashboard/dashboard-router';
 import { queryKeys } from '@/lib/query-keys';
 import { projectService } from '@/lib/services';
 
@@ -35,5 +35,5 @@ export default function DashboardPage(): React.JSX.Element {
     );
   }
 
-  return <DashboardView projectId={first.id} />;
+  return <DashboardRouter projectId={first.id} />;
 }

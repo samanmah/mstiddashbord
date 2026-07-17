@@ -24,6 +24,10 @@ export interface ProjectDto {
   projectCode: string | null;
   projectManager: string;
   projectType: string;
+  /**
+   * بودجهٔ مصوب پروژه به واحد «میلیارد ریال» (دادهٔ اصلی پروژه).
+   * با جمع `budgetAmount` بسته‌های واردشده در کنترل پروژه (تومان) یکی نیست.
+   */
   budgetBillionRial: number;
   description: string;
   /** ISO date */
@@ -34,6 +38,10 @@ export interface ProjectDto {
   isActive: boolean;
   displayOrder: number;
   version: number;
+  /** آیا کنترل پروژه پیشرفته فعال است. */
+  projectControlEnabled: boolean;
+  /** شناسه برنامهٔ کنترل فعال؛ null اگر غیرفعال. */
+  activeControlPlanId: string | null;
   createdAt: string;
   updatedAt: string;
 }

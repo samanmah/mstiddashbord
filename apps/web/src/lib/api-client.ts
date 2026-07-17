@@ -94,14 +94,27 @@ async function rawRequest<T>(
     signal: options.signal,
   });
 
-  if (res.status === 204) {
+  // 204/205 و بدنهٔ خالی نباید JSON.parse شوند (جلوگیری از Error Boundary).
+  if (res.status === 204 || res.status === 205) {
+    return { res, data: null };
+  }
+  const contentLength = res.headers.get('content-length');
+  if (contentLength === '0') {
     return { res, data: null };
   }
 
   const contentType = res.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
-    const data = (await res.json()) as T;
-    return { res, data };
+    const text = await res.text();
+    if (!text.trim()) {
+      return { res, data: null };
+    }
+    try {
+      const data = JSON.parse(text) as T;
+      return { res, data };
+    } catch {
+      return { res, data: null };
+    }
   }
   return { res, data: null };
 }

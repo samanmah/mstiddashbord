@@ -13,7 +13,7 @@
     "dev": "pnpm --parallel --filter=@ppm/api --filter=@ppm/web dev",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && node --test infrastructure/scripts/project-control/*.test.mjs",
     "test:e2e": "pnpm --filter=@ppm/web test:e2e",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",

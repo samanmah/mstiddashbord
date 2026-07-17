@@ -1,11 +1,11 @@
 'use client';
 
-import { DashboardView } from '@/components/dashboard/dashboard-view';
+import { DashboardRouter } from '@/features/project-control/components/dashboard/dashboard-router';
 
 export default function ProjectDashboardPage({
   params,
 }: {
   params: { projectId: string };
 }): React.JSX.Element {
-  return <DashboardView projectId={params.projectId} />;
+  return <DashboardRouter projectId={params.projectId} />;
 }

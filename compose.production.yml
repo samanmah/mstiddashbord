@@ -18,7 +18,8 @@ services:
     expose:
       - '5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18+: مسیر داده پیش‌فرض /var/lib/postgresql است (نه .../data).
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 10s
@@ -42,13 +43,22 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       COOKIE_SECRET: ${COOKIE_SECRET}
-      COOKIE_SECURE: 'true'
-      COOKIE_SAMESITE: lax
+      # Production واقعی با HTTPS: COOKIE_SECURE=true (پیش‌فرض). Override فقط از ENV.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
       RUN_SEED_ON_START: ${RUN_SEED_ON_START:-false}
+      APP_VERSION: ${APP_VERSION:-unknown}
+      GIT_SHA: ${GIT_SHA:-unknown}
+      UPLOAD_DIR: /app/uploads
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_SIZE:-20971520}
+      IMPORT_TEMP_DIR: ${IMPORT_TEMP_DIR:-/tmp/ppm-import}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       SEED_EDITOR_USERNAME: ${SEED_EDITOR_USERNAME}
       SEED_EDITOR_PASSWORD: ${SEED_EDITOR_PASSWORD}
       SEED_VIEWER_USERNAME: ${SEED_VIEWER_USERNAME}
       SEED_VIEWER_PASSWORD: ${SEED_VIEWER_PASSWORD}
+      MPXJ_HELPER_JAR: ${MPXJ_HELPER_JAR:-/app/mpp/mpxj-helper.jar}
+      JAVA_HOME: ${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk}
     expose:
       - '4000'
     volumes:
