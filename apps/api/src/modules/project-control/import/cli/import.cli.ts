@@ -6,13 +6,15 @@
  *   pnpm --filter @ppm/api project-control:import -- \
  *     --project-id <UUID> --excel "<PATH.xlsx>" [--mpp "<PATH.mpp>"] --dry-run
  *
+ * Strict Fixture (Smoke/CI):
+ *   ... --dry-run --strict-fixture-manifest --report-json
+ *
  * Commit:
- *   pnpm --filter @ppm/api project-control:import -- \
- *     --project-id <UUID> --excel "<PATH.xlsx>" [--mpp "<PATH.mpp>"] --commit
+ *   ... --commit --allow-warnings [--strict-fixture-manifest]
  *
  * قواعد:
  * - پیش‌فرض Dry-Run است؛ بدون --commit هیچ تغییری در دیتابیس ثبت نمی‌شود.
- * - Manifest و Conflictها چاپ می‌شوند.
+ * - Strict Fixture فقط با --strict-fixture-manifest (یا ENV) فعال می‌شود.
  * - فایل خام یا اطلاعات حساس در Log چاپ نمی‌شود.
  * - Exit Code: 0 موفق، 2 خطای اعتبارسنجی/بحرانی، 1 خطای اجرا.
  */
@@ -23,29 +25,23 @@ import { ControlImportSourceType } from '@ppm/contracts';
 import { AppModule } from '../../../../app.module';
 import { ControlImportService } from '../control-import.service';
 import { MPP_ADAPTER, type MppAdapter } from '../mpp/mpp-adapter.interface';
-
-function getFlag(name: string): string | null {
-  const idx = process.argv.indexOf(`--${name}`);
-  if (idx === -1) return null;
-  const next = process.argv[idx + 1];
-  if (!next || next.startsWith('--')) return '';
-  return next;
-}
-
-function hasFlag(name: string): boolean {
-  return process.argv.includes(`--${name}`);
-}
+import { buildImportPreviewReport, parseImportCliFlags } from './import-cli-report';
 
 function log(msg: string): void {
   console.log(msg);
 }
 
 async function main(): Promise<number> {
-  const projectId = getFlag('project-id');
-  const excelPath = getFlag('excel');
-  const mppPath = getFlag('mpp');
-  const doCommit = hasFlag('commit');
-  const allowWarnings = hasFlag('allow-warnings') || doCommit;
+  const flags = parseImportCliFlags(process.argv);
+  const {
+    projectId,
+    excelPath,
+    mppPath,
+    doCommit,
+    allowWarnings,
+    strictFixtureManifest,
+    reportJson,
+  } = flags;
 
   if (!projectId) {
     log('خطا: --project-id الزامی است.');
@@ -68,6 +64,9 @@ async function main(): Promise<number> {
     const originalname = basename(excelPath);
 
     log(`حالت: ${doCommit ? 'COMMIT' : 'DRY-RUN'}`);
+    if (strictFixtureManifest) {
+      log('Strict Fixture Manifest: فعال');
+    }
     log('در حال بارگذاری و تجزیهٔ Excel...');
     const { importBatchId } = await service.upload(
       projectId,
@@ -75,7 +74,9 @@ async function main(): Promise<number> {
       ControlImportSourceType.EXCEL,
       ctx,
     );
-    const preview = await service.preview(projectId, importBatchId, !doCommit, ctx);
+    const preview = await service.preview(projectId, importBatchId, !doCommit, ctx, {
+      strictFixtureManifest,
+    });
 
     // چاپ Manifest
     log('\n=== Manifest ===');
@@ -88,13 +89,18 @@ async function main(): Promise<number> {
     );
     log(
       `خطاها: بحرانی=${preview.criticalCount} هشدار=${preview.warningCount} ` +
-        `اطلاع=${preview.infoCount}`,
+        `اطلاع=${preview.infoCount} orphan=${preview.orphanCount}`,
     );
     if (preview.conflicts.length > 0) {
       log(`\n=== Conflictها (${preview.conflicts.length}) ===`);
       for (const cf of preview.conflicts.slice(0, 50)) {
         log(`سطر ${cf.sourceRow}: ${cf.reason}`);
       }
+    }
+
+    if (reportJson) {
+      const report = buildImportPreviewReport(preview);
+      log(`IMPORT_PREVIEW_JSON=${JSON.stringify(report)}`);
     }
 
     // MPP (اختیاری) — بدون Java به‌صورت کنترل‌شده مدیریت می‌شود.

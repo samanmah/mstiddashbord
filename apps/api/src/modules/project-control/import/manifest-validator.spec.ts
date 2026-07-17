@@ -101,5 +101,7 @@ describe('manifest-validator', () => {
     expect(result.orphanCount).toBe(0);
     // اعداد Fixture روی این فایل اعمال نمی‌شود
     expect(manifestIsValid(compareManifest(parsed.manifest))).toBe(false);
+    // Strict به‌صورت پیش‌فرض برای فایل عمومی خاموش است
+    expect(shouldRunStrictFixtureValidation({ fileHash: 'abc' })).toBe(false);
   });
 });

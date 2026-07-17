@@ -255,18 +255,46 @@ export interface ControlImportPreview {
   manifest: ExcelManifest;
   manifestChecks: ImportManifestComparison[];
   manifestValid: boolean;
+  /** آیا Strict Fixture Manifest در این Preview فعال بوده است. */
+  strictFixtureManifest: boolean;
   counts: {
     phases: number;
     break1: number;
     tasks: number;
     totalNodes: number;
   };
+  orphanCount: number;
   conflicts: ImportConflict[];
   issues: ImportIssue[];
   criticalCount: number;
   warningCount: number;
   infoCount: number;
   canCommit: boolean;
+}
+
+/** خلاصهٔ Machine-readable برای CLI/Smoke (`IMPORT_PREVIEW_JSON=`). */
+export interface ImportPreviewReportJson {
+  canCommit: boolean;
+  criticalCount: number;
+  warningCount: number;
+  strictFixtureManifest: boolean;
+  counts: {
+    phases: number;
+    break1: number;
+    tasks: number;
+    totalNodes: number;
+  };
+  manifest: {
+    phaseCount: number;
+    break1Count: number;
+    sourceRowCount: number;
+    periodCount: number;
+    budgetTotal: number;
+    dateMin: string | null;
+    dateMax: string | null;
+  };
+  orphanCount: number;
+  manifestCheckKeys: string[];
 }
 
 export interface ControlImportCommitResult {

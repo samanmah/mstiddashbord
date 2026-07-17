@@ -203,35 +203,67 @@ log "Enable path=${ENABLE_PATH}"
 docker exec ppm_pc_staging_api mkdir -p /tmp/ppm-import
 docker cp "$FIXTURE" ppm_pc_staging_api:/tmp/ppm-import/gantt-fixture.xlsx
 
-log "Dry-run import..."
+log "Dry-run import (strict fixture manifest)..."
 set +e
 DRY_OUT="$(docker exec ppm_pc_staging_api node dist/modules/project-control/import/cli/import.cli.js \
   --project-id "$PROJECT_ID" \
   --excel /tmp/ppm-import/gantt-fixture.xlsx \
-  --dry-run 2>&1)"
+  --dry-run --strict-fixture-manifest --report-json 2>&1)"
 DRY_CODE=$?
 set -e
 echo "$DRY_OUT" | grep -q 'Manifest' || die "Manifest missing in dry-run"
 echo "$DRY_OUT" | grep -E '✗' >/dev/null && die "Manifest has failed rows"
 [[ "$DRY_CODE" -eq 0 ]] || die "Dry-run failed exit=${DRY_CODE}"
 
-assert_manifest_line() {
-  local key="$1" expected="$2"
-  echo "$DRY_OUT" | grep -E "${key}.*${expected}|${expected}.*${key}" >/dev/null \
-    || die "Manifest mismatch for ${key} expected=${expected}"
+# Parse machine-readable report (not Persian grep for critical counts)
+REPORT_JSON="$(printf '%s\n' "$DRY_OUT" | sed -n 's/^IMPORT_PREVIEW_JSON=//p' | tail -n 1)"
+[[ -n "$REPORT_JSON" ]] || die "IMPORT_PREVIEW_JSON missing from dry-run output"
+
+python3 - "$REPORT_JSON" <<'PY' || die "Strict fixture manifest validation failed"
+import json, sys
+report = json.loads(sys.argv[1])
+if not report.get("strictFixtureManifest"):
+    print("Strict fixture manifest was not produced", file=sys.stderr)
+    sys.exit(1)
+required_keys = [
+    "phaseCount", "break1Count", "sourceRowCount", "periodCount",
+    "budgetTotal", "dateMin", "dateMax",
+]
+keys = set(report.get("manifestCheckKeys") or [])
+missing = [k for k in required_keys if k not in keys]
+if missing:
+    print(
+        "Strict fixture manifest was not produced (missing check keys: "
+        + ",".join(missing) + ")",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+expected = {
+    ("manifest", "phaseCount"): 7,
+    ("manifest", "break1Count"): 24,
+    ("manifest", "sourceRowCount"): 142,
+    ("manifest", "periodCount"): 147,
+    ("manifest", "budgetTotal"): 929875000000,
+    ("manifest", "dateMin"): "1404/09/01",
+    ("manifest", "dateMax"): "1406/12/10",
+    ("counts", "tasks"): 142,
+    ("counts", "totalNodes"): 173,
+    ("orphanCount",): 0,
+    ("criticalCount",): 0,
 }
-assert_manifest_line "phaseCount" "7"
-assert_manifest_line "break1Count" "24"
-assert_manifest_line "sourceRowCount" "142"
-assert_manifest_line "budgetTotal" "929875000000"
-assert_manifest_line "dateMin" "1404/09/01"
-assert_manifest_line "dateMax" "1406/12/10"
-# activityCount در خروجی شمارش نودها (نه کلید Manifest) چاپ می‌شود
-echo "$DRY_OUT" | grep -E 'فعالیت=142' >/dev/null \
-  || die "Manifest mismatch for activityCount expected=142"
-echo "$DRY_OUT" | grep -E 'کل=173' >/dev/null \
-  || die "Manifest mismatch for importedNodes expected=173"
-log "Dry-run OK — Manifest counts validated"
+for path, exp in expected.items():
+    cur = report
+    for p in path:
+        cur = cur[p]
+    if cur != exp:
+        print(f"Manifest mismatch for {'.'.join(path)} expected={exp} actual={cur}", file=sys.stderr)
+        sys.exit(1)
+if report.get("canCommit") is not True:
+    print("canCommit expected true", file=sys.stderr)
+    sys.exit(1)
+print("Strict fixture report OK")
+PY
+log "Dry-run OK — Strict Fixture Manifest counts validated"
 
 # ─── 7) جلوگیری از Duplicate: Skip Commit اگر 174 نود فعال ───
 log "Checking active WBS node count before commit..."
@@ -242,12 +274,12 @@ if [[ "$ACTIVE_BEFORE" == "$EXPECTED_NODES_WITH_ROOT" ]]; then
   log "Fixture already committed (active nodes=${ACTIVE_BEFORE}) — skip commit to avoid duplicates."
   COMMIT_PATH="skipped"
 else
-  log "Commit import (allow-warnings for known fixture warnings)..."
+  log "Commit import (strict fixture + allow-warnings)..."
   set +e
   COMMIT_OUT="$(docker exec ppm_pc_staging_api node dist/modules/project-control/import/cli/import.cli.js \
     --project-id "$PROJECT_ID" \
     --excel /tmp/ppm-import/gantt-fixture.xlsx \
-    --commit --allow-warnings 2>&1)"
+    --commit --allow-warnings --strict-fixture-manifest --report-json 2>&1)"
   COMMIT_CODE=$?
   set -e
   printf '%s\n' "$COMMIT_OUT"

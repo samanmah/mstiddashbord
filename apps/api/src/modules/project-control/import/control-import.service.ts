@@ -142,6 +142,7 @@ export class ControlImportService {
     importBatchId: string,
     dryRun: boolean,
     _ctx: AuditContext,
+    options: { strictFixtureManifest?: boolean } = {},
   ): Promise<ControlImportPreview> {
     const batch = await this.requireBatch(projectId, importBatchId);
     if (batch.sourceType !== ControlImportSourceType.EXCEL) {
@@ -153,7 +154,13 @@ export class ControlImportService {
     const storedFilename = batch.originalFilename.split('::')[0]!;
     const buffer = await this.readStoredFile(storedFilename);
     const parsed = await this.excelParser.parse(buffer);
-    const preview = await this.buildPreview(projectId, importBatchId, parsed, dryRun);
+    const preview = await this.buildPreview(
+      projectId,
+      importBatchId,
+      parsed,
+      dryRun,
+      options,
+    );
 
     await this.persistBatchState(importBatchId, parsed, preview, dryRun);
     return preview;
@@ -163,8 +170,9 @@ export class ControlImportService {
     projectId: string,
     importBatchId: string,
     ctx: AuditContext,
+    options: { strictFixtureManifest?: boolean } = {},
   ): Promise<ControlImportPreview> {
-    return this.preview(projectId, importBatchId, true, ctx);
+    return this.preview(projectId, importBatchId, true, ctx, options);
   }
 
   async map(
@@ -256,12 +264,14 @@ export class ControlImportService {
       manifest: parsed.manifest,
       manifestChecks: checks,
       manifestValid,
+      strictFixtureManifest: runStrict,
       counts: {
         phases: tree.phaseCount,
         break1: tree.break1Count,
         tasks: tree.taskCount,
         totalNodes: tree.nodes.length,
       },
+      orphanCount: structural.orphanCount,
       conflicts,
       issues,
       criticalCount,
