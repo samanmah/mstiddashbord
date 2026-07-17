@@ -133,16 +133,31 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
     );
   };
 
+  const goToDataQuality = (): void => {
+    setStep(4);
+  };
+
+  const conflictsReady =
+    !preview ||
+    preview.conflicts.length === 0 ||
+    preview.conflicts.every((c) => decisions[c.sourceRow] != null);
+
   const applyMapping = (): void => {
-    if (!batchId || !preview) return;
+    if (!preview) return;
+    // بدون تعارض: درخواست Mapping ارسال نمی‌شود.
+    if (preview.conflicts.length === 0) {
+      goToDataQuality();
+      return;
+    }
+    if (!batchId || !conflictsReady) return;
     const mappings = decisionsToMappings(preview.conflicts, decisions);
     mapMut.mutate(
       { id: batchId, mappings },
       {
-        onSuccess: (p) => {
-          setPreview(p);
+        onSuccess: () => {
+          // پاسخ map فقط { updated } است — Preview را خراب نکن.
           toast.success('تصمیم‌های تطبیق اعمال شد');
-          setStep(4);
+          goToDataQuality();
         },
         onError: (e) => toast.error(isApiError(e) ? e.message : 'اعمال تطبیق ناموفق بود'),
       },
@@ -288,8 +303,17 @@ export function ImportWizard({ projectId }: { projectId: string }): React.JSX.El
               else if (step === 4) runDryRun();
               else setStep((s) => s + 1);
             }}
-            nextLabel={step === 3 ? 'اعمال تطبیق' : step === 4 ? 'اجرای آزمایشی' : 'مرحلهٔ بعد'}
+            nextLabel={
+              step === 3
+                ? preview.conflicts.length === 0
+                  ? 'مرحلهٔ بعد'
+                  : 'اعمال تطبیق'
+                : step === 4
+                  ? 'اجرای آزمایشی'
+                  : 'مرحلهٔ بعد'
+            }
             nextLoading={mapMut.isPending || validateMut.isPending}
+            nextDisabled={step === 3 && preview.conflicts.length > 0 && !conflictsReady}
           />
         </div>
       ) : null}

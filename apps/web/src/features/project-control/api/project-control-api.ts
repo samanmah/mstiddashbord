@@ -167,7 +167,8 @@ export const projectControlApi = {
   },
   mapImport: async (projectId: string, id: string, mappings: ImportMappingItem[]) => {
     assertImportBatchId(id);
-    return apiRequest<ControlImportPreview>(`${base(projectId)}/imports/${id}/map`, {
+    // Backend فقط { updated } برمی‌گرداند — نه Preview کامل.
+    return apiRequest<{ updated: number } | null>(`${base(projectId)}/imports/${id}/map`, {
       method: 'POST',
       body: { mappings },
     });

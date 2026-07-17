@@ -62,8 +62,13 @@ export function ConflictResolver({
                 <Select
                   className="h-8 text-xs"
                   options={DECISION_OPTIONS}
-                  value={decisions[c.sourceRow] ?? 'keep-excel'}
-                  onChange={(e) => onChange(c.sourceRow, e.target.value as ConflictDecision)}
+                  placeholder="انتخاب تصمیم…"
+                  value={decisions[c.sourceRow] ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    onChange(c.sourceRow, v as ConflictDecision);
+                  }}
                 />
               </td>
             </tr>

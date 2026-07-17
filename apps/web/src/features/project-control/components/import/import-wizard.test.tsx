@@ -11,11 +11,12 @@ const VALID_BATCH_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '3654a149-6fcc-406e-b97c-d0daf62ec502';
 
 const toastError = vi.fn();
+const toastSuccess = vi.fn();
 
 vi.mock('sonner', () => ({
   toast: {
     error: (...args: unknown[]) => toastError(...args),
-    success: vi.fn(),
+    success: (...args: unknown[]) => toastSuccess(...args),
   },
 }));
 
@@ -47,12 +48,15 @@ vi.mock('../../api/project-control-api', async () => {
   };
 });
 
-function previewFixture(batchId: string): ControlImportPreview {
+function previewFixture(
+  batchId: string,
+  overrides: Partial<ControlImportPreview> = {},
+): ControlImportPreview {
   return {
     importBatchId: batchId,
     sourceType: 'EXCEL',
     fileHash: 'abc',
-    parserVersion: 'excel-gantt-1.0.0',
+    parserVersion: 'excel-gantt-1.1.0',
     dryRun: true,
     manifest: {
       phaseCount: 7,
@@ -62,29 +66,30 @@ function previewFixture(batchId: string): ControlImportPreview {
       periodCount: 147,
       totalDays: 620,
       totalMonths: 21,
-      budgetRowCount: 5,
+      budgetRowCount: 6,
       budgetTotal: 1,
       ownerCount: 65,
       dodCount: 48,
       progressCount: 104,
-      startNonEmpty: 65,
+      startNonEmpty: 60,
       startValid: 60,
-      finishNonEmpty: 65,
+      finishNonEmpty: 60,
       finishValid: 60,
       dateMin: '1404/09/01',
       dateMax: '1406/12/10',
     },
-    manifestChecks: [
-      { key: 'phaseCount', expected: '7', actual: '7', ok: true },
-    ],
+    manifestChecks: [{ key: 'phaseCount', expected: '7', actual: '7', ok: true }],
     manifestValid: true,
+    strictFixtureManifest: false,
     counts: { phases: 7, break1: 24, tasks: 100, totalNodes: 131 },
+    orphanCount: 0,
     conflicts: [],
     issues: [],
     criticalCount: 0,
     warningCount: 0,
     infoCount: 0,
     canCommit: true,
+    ...overrides,
   };
 }
 
@@ -109,9 +114,25 @@ async function selectExcelAndUpload(): Promise<void> {
   await user.click(screen.getByRole('button', { name: 'بارگذاری و تحلیل' }));
 }
 
+async function advanceToConflictsStep(): Promise<ReturnType<typeof userEvent.setup>> {
+  const user = userEvent.setup();
+  await selectExcelAndUpload();
+  await waitFor(() => {
+    expect(screen.getByText('Manifest معتبر است')).toBeInTheDocument();
+  });
+  // Manifest → Structure → Conflicts
+  await user.click(screen.getByRole('button', { name: 'مرحلهٔ بعد' }));
+  await user.click(screen.getByRole('button', { name: 'مرحلهٔ بعد' }));
+  await waitFor(() => {
+    expect(screen.getByText('تعارضی برای حل کردن وجود ندارد.')).toBeInTheDocument();
+  });
+  return user;
+}
+
 describe('ImportWizard upload → preview', () => {
   beforeEach(() => {
     toastError.mockReset();
+    toastSuccess.mockReset();
     uploadImport.mockReset();
     previewImport.mockReset();
     mapImport.mockReset();
@@ -180,5 +201,118 @@ describe('ImportWizard upload → preview', () => {
       expect(toastError).toHaveBeenCalledWith(IMPORT_BATCH_ID_MISSING_MESSAGE);
     });
     expect(previewImport).not.toHaveBeenCalled();
+  });
+});
+
+describe('ImportWizard conflicts step', () => {
+  beforeEach(() => {
+    toastError.mockReset();
+    toastSuccess.mockReset();
+    uploadImport.mockReset();
+    previewImport.mockReset();
+    mapImport.mockReset();
+    validateImport.mockReset();
+    commitImport.mockReset();
+    mppCheck.mockReset();
+    mppCheck.mockResolvedValue({
+      javaAvailable: false,
+      javaVersion: null,
+      adapterPresent: true,
+      adapterVersion: '1',
+      mpxjAvailable: false,
+      message: 'MPP در دسترس نیست',
+    });
+    uploadImport.mockResolvedValue({
+      importBatchId: VALID_BATCH_ID,
+      sourceType: 'EXCEL',
+    });
+  });
+
+  it('zero conflicts → هیچ request به apply endpoint و کلیک مرحله بعد', async () => {
+    previewImport.mockResolvedValue(previewFixture(VALID_BATCH_ID, { conflicts: [] }));
+    renderWizard();
+    const user = await advanceToConflictsStep();
+
+    expect(screen.getByRole('button', { name: 'مرحلهٔ بعد' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'اعمال تطبیق' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'مرحلهٔ بعد' }));
+    expect(mapImport).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'اجرای آزمایشی' })).toBeInTheDocument();
+    });
+    expect(toastSuccess).not.toHaveBeenCalledWith('تصمیم‌های تطبیق اعمال شد');
+  });
+
+  it('پاسخ 200 JSON از map → بدون crash و رفتن به کیفیت داده', async () => {
+    previewImport.mockResolvedValue(
+      previewFixture(VALID_BATCH_ID, {
+        conflicts: [
+          {
+            sourceRow: 5,
+            title: 'فعالیت نمونه',
+            matchedNodeId: 'node-1',
+            reason: 'عنوان تکراری',
+          },
+        ],
+      }),
+    );
+    mapImport.mockResolvedValue({ updated: 1 });
+
+    renderWizard();
+    const user = userEvent.setup();
+    await selectExcelAndUpload();
+    await waitFor(() => expect(screen.getByText('Manifest معتبر است')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'مرحلهٔ بعد' }));
+    await user.click(screen.getByRole('button', { name: 'مرحلهٔ بعد' }));
+    await waitFor(() => expect(screen.getByText('فعالیت نمونه')).toBeInTheDocument());
+
+    const applyBtn = screen.getByRole('button', { name: 'اعمال تطبیق' });
+    expect(applyBtn).toBeDisabled();
+
+    await user.selectOptions(screen.getByRole('combobox'), 'keep-excel');
+    expect(applyBtn).not.toBeDisabled();
+    await user.click(applyBtn);
+
+    await waitFor(() => {
+      expect(mapImport).toHaveBeenCalledTimes(1);
+      expect(toastSuccess).toHaveBeenCalledWith('تصمیم‌های تطبیق اعمال شد');
+    });
+    // نباید Error Boundary / toast خطای غیرمنتظره
+    expect(toastError).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'اجرای آزمایشی' })).toBeInTheDocument();
+    });
+  });
+
+  it('پاسخ null/204 از map → بدون crash', async () => {
+    previewImport.mockResolvedValue(
+      previewFixture(VALID_BATCH_ID, {
+        conflicts: [
+          {
+            sourceRow: 5,
+            title: 'فعالیت نمونه',
+            matchedNodeId: 'node-1',
+            reason: 'عنوان تکراری',
+          },
+        ],
+      }),
+    );
+    mapImport.mockResolvedValue(null);
+
+    renderWizard();
+    const user = userEvent.setup();
+    await selectExcelAndUpload();
+    await waitFor(() => expect(screen.getByText('Manifest معتبر است')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'مرحلهٔ بعد' }));
+    await user.click(screen.getByRole('button', { name: 'مرحلهٔ بعد' }));
+    await user.selectOptions(screen.getByRole('combobox'), 'keep-existing');
+    await user.click(screen.getByRole('button', { name: 'اعمال تطبیق' }));
+
+    await waitFor(() => {
+      expect(mapImport).toHaveBeenCalled();
+      expect(toastSuccess).toHaveBeenCalledWith('تصمیم‌های تطبیق اعمال شد');
+      expect(toastError).not.toHaveBeenCalled();
+    });
   });
 });
