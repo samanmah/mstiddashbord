@@ -7,7 +7,7 @@
 // نسخهٔ Parser (در ImportBatch.parserVersion ثبت می‌شود)
 // ---------------------------------------------------------------------------
 
-export const EXCEL_PARSER_VERSION = 'excel-gantt-1.1.0';
+export const EXCEL_PARSER_VERSION = 'excel-gantt-1.2.0';
 export const MPP_ADAPTER_VERSION = 'mpxj-adapter-1.0.0';
 
 // ---------------------------------------------------------------------------
@@ -155,11 +155,53 @@ export interface ParsedWbsRow {
   percentComplete: number | null;
 }
 
+/** تعریف یک ستون دوره‌ای (O+). */
+export interface ParsedPeriodColumn {
+  columnIndex: number;
+  columnLetter: string;
+  header: string | null;
+  periodIndex: number;
+  periodLabel: string;
+  periodGroup: string | null;
+  valueType: 'PLANNED' | 'ACTUAL' | 'UNKNOWN';
+  reportingDate: string | null;
+}
+
+/** مقدار یک سلول دوره‌ای برای یک ردیف فعالیت. */
+export interface ParsedNodePeriodValue {
+  sourceRow: number;
+  sourceColumn: number;
+  periodIndex: number;
+  periodLabel: string;
+  reportingDate: string | null;
+  valueType: 'PLANNED' | 'ACTUAL' | 'UNKNOWN';
+  rawValue: string | null;
+  normalizedValue: number | null;
+  formula: string | null;
+  zeroIsExplicit: boolean;
+}
+
+export interface PeriodMatrixStats {
+  periodColumnCount: number;
+  periodSnapshotsParsed: number;
+  plannedCount: number;
+  actualCount: number;
+  unknownCount: number;
+  explicitZeroCount: number;
+  formulaCount: number;
+  formulaWithoutCachedResultCount: number;
+  blankSkippedCount: number;
+  numericSum: number;
+}
+
 export interface ParsedExcelWorkbook {
   fileHash: string;
   parserVersion: string;
   manifest: ExcelManifest;
   rows: ParsedWbsRow[];
+  periodColumns: ParsedPeriodColumn[];
+  periodValues: ParsedNodePeriodValue[];
+  periodMatrixStats: PeriodMatrixStats;
   issues: ImportIssue[];
 }
 
@@ -270,6 +312,20 @@ export interface ControlImportPreview {
   warningCount: number;
   infoCount: number;
   canCommit: boolean;
+  periodMatrixStats: PeriodMatrixStats;
+  /** نسخهٔ Plan فعال فعلی (null اگر هنوز Plan نیست). */
+  currentPlanVersion: number | null;
+  /** نسخهٔ Plan جدیدی که در صورت CREATE_NEW_VERSION ساخته می‌شود. */
+  nextPlanVersion: number | null;
+  /** اگر همین fileHash قبلاً Commit موفق داشته باشد. */
+  existingCommittedImport: {
+    importBatchId: string;
+    controlPlanId: string;
+    planVersion: number;
+    completedAt: string | null;
+  } | null;
+  /** حالت پیشنهادی امن: REUSE اگر موجود باشد، وگرنه CREATE_NEW_VERSION. */
+  suggestedCommitMode: 'CREATE_NEW_VERSION' | 'REUSE_EXISTING';
 }
 
 /** خلاصهٔ Machine-readable برای CLI/Smoke (`IMPORT_PREVIEW_JSON=`). */
@@ -300,9 +356,20 @@ export interface ImportPreviewReportJson {
 export interface ControlImportCommitResult {
   importBatchId: string;
   controlPlanId: string;
+  previousControlPlanId: string | null;
   createdNodes: number;
   updatedNodes: number;
-  status: 'COMPLETED' | 'FAILED';
+  periodSnapshotsCreated: number;
+  assignmentsCreated: number;
+  dependenciesCreated: number;
+  newPlanVersion: number;
+  previousPlanVersion: number | null;
+  activePlanSwitched: boolean;
+  rollbackAvailable: boolean;
+  reusedExisting: boolean;
+  fileHash: string;
+  durationMs: number;
+  status: 'COMPLETED' | 'FAILED' | 'REUSED';
 }
 
 /**

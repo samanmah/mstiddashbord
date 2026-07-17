@@ -107,6 +107,21 @@ export const ImportMatchStatus = {
 } as const;
 export type ImportMatchStatus = (typeof ImportMatchStatus)[keyof typeof ImportMatchStatus];
 
+/** نوع مقدار سلول دوره‌ای در ماتریس O+. */
+export const PeriodValueType = {
+  PLANNED: 'PLANNED',
+  ACTUAL: 'ACTUAL',
+  UNKNOWN: 'UNKNOWN',
+} as const;
+export type PeriodValueType = (typeof PeriodValueType)[keyof typeof PeriodValueType];
+
+/** حالت Commit نسخه‌دار. */
+export const ImportCommitMode = {
+  CREATE_NEW_VERSION: 'CREATE_NEW_VERSION',
+  REUSE_EXISTING: 'REUSE_EXISTING',
+} as const;
+export type ImportCommitMode = (typeof ImportCommitMode)[keyof typeof ImportCommitMode];
+
 // ---------------------------------------------------------------------------
 // DTOs
 // ---------------------------------------------------------------------------

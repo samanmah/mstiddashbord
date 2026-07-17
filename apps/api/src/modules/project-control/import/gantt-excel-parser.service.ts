@@ -23,6 +23,7 @@ import {
   parseBudgetToman,
   tryParseJalali,
 } from './gantt-parse-utils';
+import { emptyPeriodMatrixStats, readPeriodMatrix } from './period-matrix';
 
 const GANTT_SHEET = 'گانت';
 
@@ -147,9 +148,29 @@ export class GanttExcelParserService {
     const rows = this.buildRows(rawRows, issues);
     const manifest = this.buildManifest(rows, periodCount, totalDays, totalMonths);
 
+    const matrix = readPeriodMatrix(
+      ws,
+      headerRow,
+      rows.map((r) => r.sourceRow),
+    );
+    issues.push(...matrix.issues);
+    // periodCount Manifest از شمارش numbering؛ با columns هم‌تراز می‌شود
+    if (matrix.stats.periodColumnCount !== periodCount) {
+      manifest.periodCount = matrix.stats.periodColumnCount;
+    }
+
     this.emitDataQualityIssues(rows, issues);
 
-    return { fileHash, parserVersion: this.parserVersion, manifest, rows, issues };
+    return {
+      fileHash,
+      parserVersion: this.parserVersion,
+      manifest,
+      rows,
+      periodColumns: matrix.periodColumns,
+      periodValues: matrix.periodValues,
+      periodMatrixStats: matrix.stats,
+      issues,
+    };
   }
 
   private emptyResult(fileHash: string, issues: ImportIssue[]): ParsedExcelWorkbook {
@@ -177,6 +198,9 @@ export class GanttExcelParserService {
         dateMax: null,
       },
       rows: [],
+      periodColumns: [],
+      periodValues: [],
+      periodMatrixStats: emptyPeriodMatrixStats(),
       issues,
     };
   }

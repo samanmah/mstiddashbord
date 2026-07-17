@@ -107,6 +107,12 @@ export async function buildGanttFixtureBuffer(): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('گانت');
 
+  // گروه‌های ردیف ۲ (fill-forward) — ساختار مشابه فایل واقعی بدون دادهٔ واقعی
+  ws.getCell(HEADER_ROW - 1, COL.firstPeriod).value = 'Plan Duration';
+  ws.getCell(HEADER_ROW - 1, COL.firstPeriod + 9).value = 'Actual Start';
+  ws.getCell(HEADER_ROW - 1, COL.firstPeriod + 14).value = '% Complete';
+  ws.getCell(HEADER_ROW - 1, COL.firstPeriod + 19).value = 'Actual (beyond plan)';
+
   // سربرگ (ردیف ۳)
   ws.getCell(HEADER_ROW, COL.phase).value = 'Phase ';
   ws.getCell(HEADER_ROW, COL.break1).value = 'Break1';
@@ -163,9 +169,21 @@ export async function buildGanttFixtureBuffer(): Promise<Buffer> {
       ws.getCell(r, COL.finish).value = '—';
     }
 
-    // نمونه مقدار دوره‌ای در O
-    if (s.gidx < 3) {
-      ws.getCell(r, COL.firstPeriod).value = s.gidx === 0 ? 1 : 0;
+    // ماتریس دوره‌ای sanitized: صفر صریح، مقدار مثبت، blank، planned/actual
+    if (s.gidx === 0) {
+      ws.getCell(r, COL.firstPeriod).value = 1; // planned numeric
+      ws.getCell(r, COL.firstPeriod + 1).value = 0; // explicit zero
+      // blank در COL.firstPeriod + 2
+      ws.getCell(r, COL.firstPeriod + 9).value = 3; // actual group
+      ws.getCell(r, COL.firstPeriod + 10).value = {
+        formula: '1+1',
+        result: 2,
+      };
+      ws.getCell(r, COL.firstPeriod + 11).value = { formula: '2+2' }; // بدون cached result
+    } else if (s.gidx === 1) {
+      ws.getCell(r, COL.firstPeriod).value = 0;
+    } else if (s.gidx === 2) {
+      ws.getCell(r, COL.firstPeriod + 9).value = 5;
     }
   }
 
@@ -217,10 +235,14 @@ export async function buildSanitizedEdgeFixtureBuffer(): Promise<Buffer> {
   ws.getCell(3, 5).value = 'تاریخ شروع';
   ws.getCell(3, 6).value = 'تاریخ پایان';
   ws.getCell(3, 7).value = 'مبلغ پیشنهادی';
+  ws.getCell(2, 15).value = 'Plan Duration';
+  ws.getCell(2, 17).value = 'Actual Start';
   ws.getCell(3, 14).value = 'PERCENT COMPLETE';
   ws.getCell(3, 15).value = 'PERIODS';
   ws.getCell(4, 15).value = 1;
   ws.getCell(4, 16).value = 2;
+  ws.getCell(4, 17).value = 3;
+  ws.getCell(4, 18).value = 4;
 
   // Phase + Break1 merge across rows 5-7
   ws.getCell(5, 2).value = 'فاز آزمایشی';
@@ -234,12 +256,16 @@ export async function buildSanitizedEdgeFixtureBuffer(): Promise<Buffer> {
   ws.getCell(5, 7).value = 0;
   ws.getCell(5, 14).value = 0;
   ws.getCell(5, 15).value = 1;
+  ws.getCell(5, 16).value = 0;
+  ws.getCell(5, 17).value = { formula: '10/2', result: 5 };
+  // col 18 blank
 
   ws.getCell(6, 4).value = '  زیرفعالیت ماه جاری';
   ws.getCell(6, 5).value = '-';
   ws.getCell(6, 6).value = '–';
   ws.getCell(6, 14).value = 0.25;
   ws.getCell(6, 15).value = 0;
+  ws.getCell(6, 17).value = { formula: '3+3' }; // بدون cached
 
   ws.getCell(7, 4).value = 'فعالیت پایانی';
   ws.getCell(7, 5).value = '۱۴۰۴/۰۲/۰۱';
