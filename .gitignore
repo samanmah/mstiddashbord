@@ -51,6 +51,9 @@ references/project-control/*.xml
 # Local, non-committed analysis scratch space
 references/project-control/_scratch/
 
+# Local real inputs, audits, and validation scripts (never track)
+.local/
+
 # Database backups
 backups/
 *.dump

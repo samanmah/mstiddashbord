@@ -413,6 +413,28 @@ enum PeriodValueType {
   UNKNOWN
 }
 
+/// نوع محور دوره — برای فایل واقعی STYLE_BASED فقط ORDINAL اثبات شده است.
+enum PeriodAxisType {
+  ORDINAL
+  CALENDAR_DAY
+  CALENDAR_WEEK
+  CALENDAR_MONTH
+}
+
+enum GanttSpanType {
+  PLANNED
+  ACTUAL
+  PROGRESS
+  DELAY
+  OTHER
+}
+
+enum GanttDerivationMethod {
+  EXCEL_CONDITIONAL_FORMATTING
+  EXPLICIT_PERIOD_VALUE
+  MANUAL
+}
+
 model ProjectControlPlan {
   id                  String            @id @default(uuid()) @db.Uuid
   projectId           String            @db.Uuid
@@ -443,6 +465,7 @@ model ProjectControlPlan {
   scheduleSnapshots ProjectScheduleSnapshot[]
   periodColumns     ControlPeriodColumn[]
   periodSnapshots   NodePeriodSnapshot[]
+  ganttSpans        NodeGanttSpan[]
 
   @@index([projectId])
   @@index([projectId, isActive])
@@ -450,7 +473,8 @@ model ProjectControlPlan {
   @@map("project_control_plans")
 }
 
-/// تعریف ستون دوره‌ای ماتریس Excel (O+) برای یک Control Plan.
+/// تعریف ستون/دوره محور گانت (معادل ControlPlanPeriod).
+/// برای فایل STYLE_BASED: axisType=ORDINAL و calendarStart/End=null.
 model ControlPeriodColumn {
   id            String          @id @default(uuid()) @db.Uuid
   projectId     String          @db.Uuid
@@ -461,16 +485,45 @@ model ControlPeriodColumn {
   periodLabel   String
   periodGroup   String?
   valueType     PeriodValueType @default(UNKNOWN)
+  axisType      PeriodAxisType  @default(ORDINAL)
+  calendarStart DateTime?       @db.Date
+  calendarEnd   DateTime?       @db.Date
   reportingDate DateTime?       @db.Date
   createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   controlPlan ProjectControlPlan @relation(fields: [controlPlanId], references: [id], onDelete: Cascade)
 
   @@unique([controlPlanId, columnIndex])
+  @@unique([controlPlanId, periodIndex])
   @@index([projectId])
   @@index([controlPlanId])
-  @@index([controlPlanId, periodIndex])
   @@map("control_period_columns")
+}
+
+/// بازهٔ نمایشی گانت مشتق از قواعد Conditional Formatting (نه سلول‌به‌سلول).
+model NodeGanttSpan {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  projectId              String                 @db.Uuid
+  controlPlanId          String                 @db.Uuid
+  nodeId                 String                 @db.Uuid
+  spanType               GanttSpanType
+  startPeriodIndex       Int
+  endPeriodIndex         Int
+  progressEndPeriodIndex Int?
+  sourceRow              Int?
+  derivationMethod       GanttDerivationMethod  @default(EXCEL_CONDITIONAL_FORMATTING)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  controlPlan ProjectControlPlan @relation(fields: [controlPlanId], references: [id], onDelete: Cascade)
+  node        WbsNode            @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([controlPlanId, nodeId, spanType])
+  @@index([projectId])
+  @@index([controlPlanId])
+  @@index([nodeId])
+  @@map("node_gantt_spans")
 }
 
 /// مقدار دوره‌ای Persist‌شده برای یک نود WBS.
@@ -588,6 +641,7 @@ model WbsNode {
   progressUpdates        ProgressUpdate[]
   baselineSnapshots      BaselineNodeSnapshot[]
   periodSnapshots        NodePeriodSnapshot[]
+  ganttSpans             NodeGanttSpan[]
   predecessorLinks       TaskDependency[]       @relation("DependencyPredecessor")
   successorLinks         TaskDependency[]       @relation("DependencySuccessor")
   importSourceRecords    ImportSourceRecord[]

@@ -7,8 +7,44 @@
 // نسخهٔ Parser (در ImportBatch.parserVersion ثبت می‌شود)
 // ---------------------------------------------------------------------------
 
-export const EXCEL_PARSER_VERSION = 'excel-gantt-1.2.0';
+export const EXCEL_PARSER_VERSION = 'excel-gantt-1.3.0';
 export const MPP_ADAPTER_VERSION = 'mpxj-adapter-1.0.0';
+
+export const TimelineClassification = {
+  EXPLICIT_VALUES: 'EXPLICIT_VALUES',
+  FORMULA_VALUES: 'FORMULA_VALUES',
+  STYLE_BASED_GANTT: 'STYLE_BASED_GANTT',
+  DATE_DERIVED_TIMELINE: 'DATE_DERIVED_TIMELINE',
+  DATA_ON_OTHER_SHEET: 'DATA_ON_OTHER_SHEET',
+  EMPTY_PERIOD_MATRIX: 'EMPTY_PERIOD_MATRIX',
+} as const;
+export type TimelineClassification =
+  (typeof TimelineClassification)[keyof typeof TimelineClassification];
+
+export const GanttSpanType = {
+  PLANNED: 'PLANNED',
+  ACTUAL: 'ACTUAL',
+  PROGRESS: 'PROGRESS',
+  DELAY: 'DELAY',
+  OTHER: 'OTHER',
+} as const;
+export type GanttSpanType = (typeof GanttSpanType)[keyof typeof GanttSpanType];
+
+export const GanttDerivationMethod = {
+  EXCEL_CONDITIONAL_FORMATTING: 'EXCEL_CONDITIONAL_FORMATTING',
+  EXPLICIT_PERIOD_VALUE: 'EXPLICIT_PERIOD_VALUE',
+  MANUAL: 'MANUAL',
+} as const;
+export type GanttDerivationMethod =
+  (typeof GanttDerivationMethod)[keyof typeof GanttDerivationMethod];
+
+export const PeriodAxisType = {
+  ORDINAL: 'ORDINAL',
+  CALENDAR_DAY: 'CALENDAR_DAY',
+  CALENDAR_WEEK: 'CALENDAR_WEEK',
+  CALENDAR_MONTH: 'CALENDAR_MONTH',
+} as const;
+export type PeriodAxisType = (typeof PeriodAxisType)[keyof typeof PeriodAxisType];
 
 // ---------------------------------------------------------------------------
 // سطوح و کدهای خطا/هشدار Import
@@ -45,6 +81,7 @@ export const ImportIssueCode = {
   MISSING_DATES: 'MISSING_DATES',
   EMPTY_PERIOD: 'EMPTY_PERIOD',
   EMPTY_ROW_SKIPPED: 'EMPTY_ROW_SKIPPED',
+  STYLE_BASED_GANTT: 'STYLE_BASED_GANTT',
 } as const;
 export type ImportIssueCode = (typeof ImportIssueCode)[keyof typeof ImportIssueCode];
 
@@ -155,7 +192,7 @@ export interface ParsedWbsRow {
   percentComplete: number | null;
 }
 
-/** تعریف یک ستون دوره‌ای (O+). */
+/** تعریف یک ستون دوره‌ای (O+) — معادل ControlPlanPeriod. */
 export interface ParsedPeriodColumn {
   columnIndex: number;
   columnLetter: string;
@@ -164,7 +201,20 @@ export interface ParsedPeriodColumn {
   periodLabel: string;
   periodGroup: string | null;
   valueType: 'PLANNED' | 'ACTUAL' | 'UNKNOWN';
+  axisType: PeriodAxisType;
+  calendarStart: string | null;
+  calendarEnd: string | null;
   reportingDate: string | null;
+}
+
+/** بازهٔ گانت مشتق از CF / اسکالرهای J–N (نه سلول ماتریس). */
+export interface ParsedGanttSpan {
+  sourceRow: number;
+  spanType: GanttSpanType;
+  startPeriodIndex: number;
+  endPeriodIndex: number;
+  progressEndPeriodIndex: number | null;
+  derivationMethod: GanttDerivationMethod;
 }
 
 /** مقدار یک سلول دوره‌ای برای یک ردیف فعالیت. */
@@ -192,6 +242,17 @@ export interface PeriodMatrixStats {
   formulaWithoutCachedResultCount: number;
   blankSkippedCount: number;
   numericSum: number;
+  /** طبقه‌بندی منبع خط زمانی ماتریس. */
+  timelineClassification: TimelineClassification;
+  /** تعداد تعریف دوره (ControlPlanPeriod). */
+  periodDefinitions: number;
+  /** Snapshot صریح سلول ماتریس. */
+  explicitPeriodSnapshots: number;
+  /** تعداد Span مشتق‌شده. */
+  derivedGanttSpanCount: number;
+  /** اتحاد سلول‌های نمایشی Plan∪ActualBeyond. */
+  derivedBarCellCount: number;
+  conditionalFormattingRuleCount: number;
 }
 
 export interface ParsedExcelWorkbook {
@@ -201,6 +262,7 @@ export interface ParsedExcelWorkbook {
   rows: ParsedWbsRow[];
   periodColumns: ParsedPeriodColumn[];
   periodValues: ParsedNodePeriodValue[];
+  ganttSpans: ParsedGanttSpan[];
   periodMatrixStats: PeriodMatrixStats;
   issues: ImportIssue[];
 }
@@ -360,6 +422,9 @@ export interface ControlImportCommitResult {
   createdNodes: number;
   updatedNodes: number;
   periodSnapshotsCreated: number;
+  periodDefinitionsPersisted: number;
+  ganttSpansCreated: number;
+  derivedBarCellCountFromPersistedSpans: number;
   assignmentsCreated: number;
   dependenciesCreated: number;
   newPlanVersion: number;
@@ -370,6 +435,41 @@ export interface ControlImportCommitResult {
   fileHash: string;
   durationMs: number;
   status: 'COMPLETED' | 'FAILED' | 'REUSED';
+}
+
+/** DTO محور دوره برای UI گانت. */
+export interface ControlPlanPeriodDto {
+  id: string;
+  periodIndex: number;
+  periodLabel: string;
+  sourceColumn: string;
+  axisType: PeriodAxisType;
+  calendarStart: string | null;
+  calendarEnd: string | null;
+}
+
+/** DTO نوار مشتق‌شده برای UI گانت. */
+export interface NodeGanttSpanDto {
+  id: string;
+  nodeId: string;
+  spanType: GanttSpanType;
+  startPeriodIndex: number;
+  endPeriodIndex: number;
+  progressEndPeriodIndex: number | null;
+  sourceRow: number | null;
+  derivationMethod: GanttDerivationMethod;
+  nodeTitle?: string;
+}
+
+export interface ControlGanttTimelineDto {
+  timelineClassification: TimelineClassification;
+  periodDefinitions: number;
+  explicitPeriodSnapshots: number;
+  derivedGanttSpanCount: number;
+  derivedBarCellCount: number;
+  conditionalFormattingRuleCount: number;
+  periods: ControlPlanPeriodDto[];
+  spans: NodeGanttSpanDto[];
 }
 
 /**
