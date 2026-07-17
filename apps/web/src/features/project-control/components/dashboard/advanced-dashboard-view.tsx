@@ -109,7 +109,10 @@ export function AdvancedDashboardView({ projectId }: { projectId: string }): Rea
     toast.success('اطلاعات به‌روزرسانی شد');
   }, [queryClient, projectId, dashboardQuery]);
 
-  const nodes: WbsNodeComputedDto[] = useMemo(() => ganttQuery.data ?? [], [ganttQuery.data]);
+  const nodes: WbsNodeComputedDto[] = useMemo(
+    () => ganttQuery.data?.nodes ?? [],
+    [ganttQuery.data],
+  );
   const rootComputed = useMemo(() => {
     const root =
       nodes.find((n) => n.nodeType === WbsNodeType.PROJECT) ??

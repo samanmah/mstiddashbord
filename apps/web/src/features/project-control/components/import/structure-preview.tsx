@@ -53,16 +53,29 @@ export function StructurePreview({ preview }: { preview: ControlImportPreview })
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricCard
-          label="ستون دوره‌ای"
-          value={formatCount(preview.periodMatrixStats.periodColumnCount)}
+          label={
+            preview.periodMatrixStats.timelineClassification === 'STYLE_BASED_GANTT'
+              ? 'ستون محور گانت'
+              : 'ستون دوره‌ای'
+          }
+          value={formatCount(
+            preview.periodMatrixStats.periodDefinitions ||
+              preview.periodMatrixStats.periodColumnCount,
+          )}
         />
         <MetricCard
-          label="Snapshot Parse‌شده"
-          value={formatCount(preview.periodMatrixStats.periodSnapshotsParsed)}
+          label="مقدار دوره‌ای صریح"
+          value={formatCount(preview.periodMatrixStats.explicitPeriodSnapshots)}
           tone="green"
         />
-        <MetricCard label="Planned" value={formatCount(preview.periodMatrixStats.plannedCount)} />
-        <MetricCard label="Actual" value={formatCount(preview.periodMatrixStats.actualCount)} />
+        <MetricCard
+          label="Span مشتق‌شده"
+          value={formatCount(preview.periodMatrixStats.derivedGanttSpanCount)}
+        />
+        <MetricCard
+          label="سلول نمایشی مشتق"
+          value={formatCount(preview.periodMatrixStats.derivedBarCellCount)}
+        />
       </div>
     </div>
   );

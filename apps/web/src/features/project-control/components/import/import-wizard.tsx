@@ -607,20 +607,39 @@ function DryRunPanel({ preview }: { preview: ControlImportPreview }): React.JSX.
 
 function PeriodMatrixPanel({ preview }: { preview: ControlImportPreview }): React.JSX.Element {
   const s = preview.periodMatrixStats;
+  const styleBased = s.timelineClassification === 'STYLE_BASED_GANTT';
   return (
     <div className="space-y-2">
-      <h4 className="text-sm font-bold text-navy-900">ماتریس دوره‌ای</h4>
+      <h4 className="text-sm font-bold text-navy-900">ماتریس دوره‌ای / خط زمانی</h4>
+      {styleBased ? (
+        <p className="text-xs text-grayx-header">
+          این فایل دارای محور گانت {faNumber(s.periodDefinitions)} دوره‌ای است. نوارها از زمان‌بندی
+          فعالیت‌ها و قواعد نمایشی Excel مشتق می‌شوند و مقدار دوره‌ای صریح در سلول‌ها وجود ندارد.
+        </p>
+      ) : null}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <SummaryStat label="ستون‌های دوره‌ای" value={s.periodColumnCount} />
-        <SummaryStat label="مقدار Parse‌شده" value={s.periodSnapshotsParsed} />
-        <SummaryStat label="Planned" value={s.plannedCount} />
-        <SummaryStat label="Actual" value={s.actualCount} />
-        <SummaryStat label="Unknown" value={s.unknownCount} />
+        <SummaryStat
+          label={styleBased ? 'ستون محور گانت' : 'ستون‌های دوره‌ای'}
+          value={s.periodDefinitions || s.periodColumnCount}
+        />
+        <SummaryStat label="نوع خط زمانی" value={styleBased ? 1 : 0} />
+        <SummaryStat label="مقدار دوره‌ای صریح" value={s.explicitPeriodSnapshots} />
+        <SummaryStat label="Span مشتق‌شده" value={s.derivedGanttSpanCount} tone="green" />
+        <SummaryStat label="سلول نمایشی مشتق‌شده" value={s.derivedBarCellCount} />
+        <SummaryStat label="قواعد Conditional Formatting" value={s.conditionalFormattingRuleCount} />
         <SummaryStat label="صفر صریح" value={s.explicitZeroCount} />
         <SummaryStat label="فرمول" value={s.formulaCount} />
-        <SummaryStat label="فرمول بدون cache" value={s.formulaWithoutCachedResultCount} tone="orange" />
-        <SummaryStat label="Snapshot قابل‌ثبت" value={s.periodSnapshotsParsed} tone="green" />
+        <SummaryStat
+          label="Snapshot قابل‌ثبت"
+          value={s.explicitPeriodSnapshots}
+          tone={s.explicitPeriodSnapshots > 0 ? 'green' : 'neutral'}
+        />
       </div>
+      {styleBased ? (
+        <p className="text-[11px] text-grayx-header">
+          نوع خط زمانی: گانت مبتنی بر سبک Excel — نه «{faNumber(s.periodDefinitions)} مقدار دوره‌ای».
+        </p>
+      ) : null}
     </div>
   );
 }

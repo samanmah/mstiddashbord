@@ -10,6 +10,7 @@ import type {
   BaselineDto,
   BaselineInput,
   ControlDashboard,
+  ControlGanttTimelineDto,
   ControlImportCommitResult,
   ControlImportPreview,
   DataQualityReport,
@@ -74,7 +75,10 @@ export const projectControlApi = {
   getDashboard: (projectId: string) =>
     apiRequest<ControlDashboard>(`${base(projectId)}/dashboard`),
   getGantt: (projectId: string) =>
-    apiRequest<WbsNodeComputedDto[]>(`${base(projectId)}/gantt`),
+    apiRequest<{
+      nodes: WbsNodeComputedDto[];
+      timeline: ControlGanttTimelineDto;
+    }>(`${base(projectId)}/gantt`),
   getPhaseRollup: (projectId: string) =>
     apiRequest<PhaseRollupDto[]>(`${base(projectId)}/analytics/phase-rollup`),
   getSCurve: (projectId: string) =>

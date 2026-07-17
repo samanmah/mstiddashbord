@@ -45,6 +45,7 @@ export type {
   ImportConflict,
   ControlImportPreview,
   ControlImportCommitResult,
+  ControlGanttTimelineDto,
   UploadImportResult,
   MppEnvironmentStatus,
   ParsedWbsRow,

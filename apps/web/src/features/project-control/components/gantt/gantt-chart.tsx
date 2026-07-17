@@ -85,7 +85,15 @@ export function GanttChart({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
-  const nodes = ganttQuery.data;
+  const nodes = ganttQuery.data?.nodes;
+  const timeline = ganttQuery.data?.timeline;
+  const useOrdinalAxis =
+    !!timeline &&
+    timeline.periodDefinitions > 0 &&
+    timeline.spans.length > 0 &&
+    timeline.timelineClassification === 'STYLE_BASED_GANTT';
+  const periodCount = timeline?.periodDefinitions ?? 0;
+  const PERIOD_W = 10;
 
   // مقداردهی اولیهٔ Expand (فقط یک بار پس از بارگذاری): بازکردن سطوح بالا.
   useEffect(() => {
@@ -140,9 +148,16 @@ export function GanttChart({
     [tree, expanded, matchFn],
   );
 
-  // مقیاس زمانی: از تمام تاریخ‌های موجود (با اعمال Draft).
+  // مقیاس زمانی: محور ترتیبی STYLE_BASED یا تاریخ‌های تقویمی.
   const scale = useMemo(() => {
     if (!nodes) return null;
+    if (useOrdinalAxis && periodCount > 0) {
+      // مقیاس مصنوعی: هر دوره PERIOD_W پیکسل؛ createScale برای سازگاری لایه‌ها.
+      const minMs = Date.UTC(1970, 0, 1);
+      const maxMs = minMs + (periodCount - 1) * MS_PER_DAY;
+      const s = createScale(minMs, maxMs, 'day');
+      return { ...s, totalWidth: periodCount * PERIOD_W };
+    }
     const dates: (string | null)[] = [];
     for (const n of nodes) {
       const d = draft.get(n.id);
@@ -154,7 +169,18 @@ export function GanttChart({
     if (!range) return null;
     // حاشیه: ۳ روز قبل و بعد
     return createScale(range.minMs - 3 * MS_PER_DAY, range.maxMs + 3 * MS_PER_DAY, zoom);
-  }, [nodes, zoom, draft]);
+  }, [nodes, zoom, draft, useOrdinalAxis, periodCount]);
+
+  const spansByNode = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof timeline>['spans']>();
+    if (!timeline) return map;
+    for (const span of timeline.spans) {
+      const list = map.get(span.nodeId) ?? [];
+      list.push(span);
+      map.set(span.nodeId, list);
+    }
+    return map;
+  }, [timeline]);
 
   const rowIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -169,7 +195,7 @@ export function GanttChart({
     return (
       <EmptyState
         title="داده‌ای برای نمایش گانت وجود ندارد"
-        description="ابتدا ساختار شکست کار و تاریخ‌ها را وارد کنید."
+        description="ابتدا ساختار شکست کار و تاریخ‌ها یا محور دوره‌ای را وارد کنید."
       />
     );
   }
@@ -381,6 +407,20 @@ export function GanttChart({
         </div>
       ) : null}
 
+      {useOrdinalAxis && timeline ? (
+        <div
+          data-testid="gantt-style-summary"
+          className="grid grid-cols-2 gap-2 rounded-md border border-borderx bg-surface px-3 py-2 text-[11px] sm:grid-cols-3 lg:grid-cols-6"
+        >
+          <span>نوع خط زمانی: گانت مبتنی بر سبک Excel</span>
+          <span>تعداد دوره‌ها: {periodCount}</span>
+          <span>مقدار دوره‌ای صریح: {timeline.explicitPeriodSnapshots}</span>
+          <span>Spanهای مشتق‌شده: {timeline.derivedGanttSpanCount}</span>
+          <span>سلول‌های نمایشی مشتق‌شده: {timeline.derivedBarCellCount}</span>
+          <span>قواعد Conditional Formatting: {timeline.conditionalFormattingRuleCount}</span>
+        </div>
+      ) : null}
+
       {/* بدنهٔ گانت */}
       <div
         ref={scrollRef}
@@ -403,15 +443,27 @@ export function GanttChart({
               {wbsCollapsed ? '' : 'ساختار شکست کار'}
             </div>
             <div className="relative" style={{ width: scale.totalWidth }}>
-              {ticks.map((t) => (
-                <div
-                  key={t.ms}
-                  className="absolute top-0 flex h-full flex-col justify-center border-r border-white/10 pr-1 text-[10px] text-white/80"
-                  style={{ right: t.x }}
-                >
-                  {tickLabelFa(t.ms, zoom)}
-                </div>
-              ))}
+              {useOrdinalAxis
+                ? Array.from({ length: periodCount }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === periodCount || p % 10 === 0)
+                    .map((p) => (
+                      <div
+                        key={p}
+                        className="absolute top-0 flex h-full flex-col justify-center border-r border-white/10 pr-1 text-[10px] text-white/80"
+                        style={{ right: (p - 1) * PERIOD_W }}
+                      >
+                        {p}
+                      </div>
+                    ))
+                : ticks.map((t) => (
+                    <div
+                      key={t.ms}
+                      className="absolute top-0 flex h-full flex-col justify-center border-r border-white/10 pr-1 text-[10px] text-white/80"
+                      style={{ right: t.x }}
+                    >
+                      {tickLabelFa(t.ms, zoom)}
+                    </div>
+                  ))}
             </div>
           </div>
 
@@ -474,18 +526,26 @@ export function GanttChart({
 
                 {/* تایم‌لاین ردیف */}
                 <div className="relative" style={{ width: scale.totalWidth }}>
-                  <GanttBar
-                    node={n}
-                    start={start}
-                    finish={finish}
-                    scale={scale}
-                    mode={mode}
-                    isDraft={isDraft}
-                    connectMode={connectMode}
-                    connectActive={connectFrom === n.id}
-                    onConnectClick={() => handleBarClickConnect(n.id)}
-                    onDraftChange={(s, f) => setDraftDates(n.id, s, f)}
-                  />
+                  {useOrdinalAxis ? (
+                    <OrdinalSpanBars
+                      nodeTitle={n.title}
+                      spans={spansByNode.get(n.id) ?? []}
+                      periodWidth={PERIOD_W}
+                    />
+                  ) : (
+                    <GanttBar
+                      node={n}
+                      start={start}
+                      finish={finish}
+                      scale={scale}
+                      mode={mode}
+                      isDraft={isDraft}
+                      connectMode={connectMode}
+                      connectActive={connectFrom === n.id}
+                      onConnectClick={() => handleBarClickConnect(n.id)}
+                      onDraftChange={(s, f) => setDraftDates(n.id, s, f)}
+                    />
+                  )}
                 </div>
               </div>
             );
@@ -494,8 +554,8 @@ export function GanttChart({
           {/* Spacer پایین */}
           <div style={{ height: Math.max(0, totalRowsHeight - endIdx * ROW_H) }} />
 
-          {/* پس‌زمینهٔ آخر هفته (فقط در Zoom روز) */}
-          {zoom === 'day' ? (
+          {/* پس‌زمینهٔ آخر هفته (فقط در Zoom روز تقویمی) */}
+          {!useOrdinalAxis && zoom === 'day' ? (
             <WeekendLayer
               scale={scale}
               wbsWidth={effectiveWbsWidth}
@@ -504,30 +564,97 @@ export function GanttChart({
           ) : null}
 
           {/* خطوط راهنما: امروز و تاریخ وضعیت */}
-          <VerticalMarkers
-            scale={scale}
-            nowMs={nowMs}
-            wbsWidth={effectiveWbsWidth}
-            totalRowsHeight={totalRowsHeight}
-          />
+          {!useOrdinalAxis ? (
+            <VerticalMarkers
+              scale={scale}
+              nowMs={nowMs}
+              wbsWidth={effectiveWbsWidth}
+              totalRowsHeight={totalRowsHeight}
+            />
+          ) : null}
 
           {/* خطوط وابستگی */}
-          <DependencyLayer
-            deps={depsQuery.data ?? []}
-            rows={rows}
-            rowIndexById={rowIndexById}
-            getDates={getDates}
-            scale={scale}
-            wbsWidth={effectiveWbsWidth}
-            startIdx={startIdx}
-            endIdx={endIdx}
-            totalRowsHeight={totalRowsHeight}
-          />
+          {!useOrdinalAxis ? (
+            <DependencyLayer
+              deps={depsQuery.data ?? []}
+              rows={rows}
+              rowIndexById={rowIndexById}
+              getDates={getDates}
+              scale={scale}
+              wbsWidth={effectiveWbsWidth}
+              startIdx={startIdx}
+              endIdx={endIdx}
+              totalRowsHeight={totalRowsHeight}
+            />
+          ) : null}
         </div>
       </div>
 
       <GanttLegend />
     </div>
+  );
+}
+
+function OrdinalSpanBars({
+  nodeTitle,
+  spans,
+  periodWidth,
+}: {
+  nodeTitle: string;
+  spans: Array<{
+    spanType: string;
+    startPeriodIndex: number;
+    endPeriodIndex: number;
+    progressEndPeriodIndex: number | null;
+    sourceRow: number | null;
+    derivationMethod: string;
+  }>;
+  periodWidth: number;
+}): React.JSX.Element | null {
+  if (spans.length === 0) return null;
+  const color = (t: string): string => {
+    if (t === 'PLANNED') return 'bg-sky-500/70';
+    if (t === 'ACTUAL') return 'bg-amber-500/80';
+    if (t === 'PROGRESS') return 'bg-emerald-600';
+    return 'bg-slate-400';
+  };
+  const top = (t: string): number => {
+    if (t === 'PLANNED') return 6;
+    if (t === 'ACTUAL') return 14;
+    if (t === 'PROGRESS') return 22;
+    return 10;
+  };
+  return (
+    <>
+      {spans.map((span, idx) => {
+        const width =
+          Math.max(1, span.endPeriodIndex - span.startPeriodIndex + 1) * periodWidth;
+        const right = (span.startPeriodIndex - 1) * periodWidth;
+        const title = [
+          nodeTitle,
+          `نوع: ${span.spanType}`,
+          `شروع دوره: ${span.startPeriodIndex}`,
+          `پایان دوره: ${span.endPeriodIndex}`,
+          `پایان پیشرفت: ${span.progressEndPeriodIndex ?? '—'}`,
+          `سطر منبع: ${span.sourceRow ?? '—'}`,
+          `روش: ${span.derivationMethod}`,
+        ].join('\n');
+        return (
+          <div
+            key={`${span.spanType}-${idx}`}
+            data-testid="gantt-ordinal-span"
+            title={title}
+            className={cn('absolute rounded-sm', color(span.spanType))}
+            style={{
+              right,
+              width,
+              top: top(span.spanType),
+              height: span.spanType === 'PROGRESS' ? 6 : 5,
+            }}
+          />
+        );
+      })}
+    </>
   );
 }
 
