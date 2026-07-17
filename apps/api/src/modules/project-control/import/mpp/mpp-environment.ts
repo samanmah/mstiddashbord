@@ -1,23 +1,33 @@
 /**
  * تشخیص محیط اجرای MPP (Java Runtime + Helper Jar مبتنی بر MPXJ).
  * تمام فراخوانی‌ها با execFile (بدون Shell) انجام می‌شود تا Command Injection ممکن نباشد.
+ *
+ * Unit Testها از طریق Dependency Injection بدون اجرای Java واقعی Deterministic می‌مانند.
  */
 import { execFile } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { constants as FS } from 'node:fs';
 import { MPP_ADAPTER_VERSION, type MppEnvironmentStatus } from '@ppm/contracts';
 
-const JAVA_TIMEOUT_MS = 5000;
+/** Timeout عملیاتی برای `java -version` — Unit Test نباید منتظر این مقدار بماند. */
+export const JAVA_TIMEOUT_MS = 2000;
 
-function run(
+export type MppCommandRunner = (
   command: string,
-  args: string[],
+  args: readonly string[],
   timeoutMs: number,
-): Promise<{ code: number; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
+) => Promise<{
+  code: number;
+  stdout: string;
+  stderr: string;
+}>;
+
+/** Runner واقعی مبتنی بر execFile (بدون Shell). */
+export const runCommand: MppCommandRunner = (command, args, timeoutMs) =>
+  new Promise((resolve) => {
     execFile(
       command,
-      args,
+      [...args],
       { timeout: timeoutMs, windowsHide: true, maxBuffer: 1024 * 1024 },
       (error, stdout, stderr) => {
         const code =
@@ -30,7 +40,6 @@ function run(
       },
     );
   });
-}
 
 /** استخراج نسخهٔ Java از خروجی `java -version` (که روی stderr چاپ می‌شود). */
 export function parseJavaVersion(output: string): string | null {
@@ -39,9 +48,11 @@ export function parseJavaVersion(output: string): string | null {
 }
 
 /** آیا Java در PATH موجود و قابل اجراست؟ */
-export async function detectJava(): Promise<{ available: boolean; version: string | null }> {
+export async function detectJava(
+  runner: MppCommandRunner = runCommand,
+): Promise<{ available: boolean; version: string | null }> {
   try {
-    const { code, stdout, stderr } = await run('java', ['-version'], JAVA_TIMEOUT_MS);
+    const { code, stdout, stderr } = await runner('java', ['-version'], JAVA_TIMEOUT_MS);
     if (code !== 0) return { available: false, version: null };
     return { available: true, version: parseJavaVersion(`${stderr}\n${stdout}`) };
   } catch {
@@ -55,7 +66,7 @@ export function mpxjHelperJarPath(): string | null {
   return p && p.trim().length > 0 ? p.trim() : null;
 }
 
-async function fileReadable(path: string): Promise<boolean> {
+async function defaultFileReadable(path: string): Promise<boolean> {
   try {
     await access(path, FS.R_OK);
     return true;
@@ -64,11 +75,26 @@ async function fileReadable(path: string): Promise<boolean> {
   }
 }
 
+export interface MppEnvironmentDependencies {
+  detectJava?: () => Promise<{
+    available: boolean;
+    version: string | null;
+  }>;
+  helperJarPath?: () => string | null;
+  fileReadable?: (path: string) => Promise<boolean>;
+}
+
 /** بررسی کامل محیط MPP و ساخت پیام فارسی وضعیت. */
-export async function checkMppEnvironment(): Promise<MppEnvironmentStatus> {
-  const java = await detectJava();
-  const jarPath = mpxjHelperJarPath();
-  const mpxjAvailable = jarPath !== null && (await fileReadable(jarPath));
+export async function checkMppEnvironment(
+  deps: MppEnvironmentDependencies = {},
+): Promise<MppEnvironmentStatus> {
+  const detect = deps.detectJava ?? (() => detectJava());
+  const helperPath = deps.helperJarPath ?? mpxjHelperJarPath;
+  const readable = deps.fileReadable ?? defaultFileReadable;
+
+  const java = await detect();
+  const jarPath = helperPath();
+  const mpxjAvailable = jarPath !== null && (await readable(jarPath));
 
   let message: string;
   if (!java.available) {
