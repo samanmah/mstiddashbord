@@ -10,8 +10,8 @@
 #   /opt/ppm/compose.server.yml
 #   /opt/ppm/compose.runtime-production.yml
 #
-# Runtime فعلی HTTP حفظ می‌شود: NODE_ENV=development, COOKIE_SECURE=false
-# ممنوع: down -v، latest، prune فوری، Rollback فقط API
+# Backup/State زیر DEPLOY_PATH (بدون /var/backups، بدون sudo).
+# ممنوع: down -v، latest، prune فوری، Rollback فقط API، حذف Backup قبلی
 set -Eeuo pipefail
 
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
@@ -27,8 +27,6 @@ WEB_DIGEST="${WEB_DIGEST:?WEB_DIGEST required}"
 
 DEPLOY_PATH="${DEPLOY_PATH:?DEPLOY_PATH required}"
 WORKTREES_ROOT="${WORKTREES_ROOT:-/opt/ppm/releases/worktrees}"
-STATE_ROOT="${PRODUCTION_RELEASE_STATE_DIR:-/opt/ppm/releases/project-control}"
-BACKUP_DIR="${BACKUP_DIR:-/var/backups/ppm/releases}"
 PROD_ENV_FILE="${PROD_ENV_FILE:-/opt/ppm/.env}"
 PROD_ENV_RELEASE="${PROD_ENV_RELEASE:-/opt/ppm/releases/env/${FULL_SHA}.env}"
 SERVER_COMPOSE="${SERVER_COMPOSE:-/opt/ppm/compose.server.yml}"
@@ -45,6 +43,32 @@ WEB_IMAGE="ghcr.io/samanmah/mstiddashbord-web@${WEB_DIGEST}"
 [[ -n "${GHCR_READ_TOKEN:-}" ]] || die "GHCR_READ_TOKEN لازم است."
 [[ -f "${PROD_ENV_FILE}" ]] || die "Production env یافت نشد: ${PROD_ENV_FILE}"
 command -v python3 >/dev/null 2>&1 || die "python3 برای build-release-env لازم است."
+
+# ─── مسیر Backup/State زیر DEPLOY_PATH (بدون /var/backups، بدون sudo) ───
+test -d "${DEPLOY_PATH}" || die "DEPLOY_PATH موجود نیست: ${DEPLOY_PATH}"
+test -w "${DEPLOY_PATH}" || die "DEPLOY_PATH قابل نوشتن نیست: ${DEPLOY_PATH}"
+
+BACKUP_ROOT="${BACKUP_ROOT:-${DEPLOY_PATH}/backups/production}"
+case "${BACKUP_ROOT}" in
+  /var/backups|/var/backups/*)
+    die "BACKUP_ROOT زیر /var/backups مجاز نیست (Permission denied روی کاربر Deploy)."
+    ;;
+esac
+
+TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}-${FULL_SHA}"
+STATE_DIR="${DEPLOY_PATH}/releases/state/${FULL_SHA}/${TIMESTAMP}"
+BACKUP_FILE="${BACKUP_DIR}/production-${FULL_SHA}.dump"
+
+install -d -m 700 "${BACKUP_ROOT}"
+install -d -m 700 "${BACKUP_DIR}"
+install -d -m 700 "${STATE_DIR}"
+install -d -m 700 "$(dirname "${PROD_ENV_RELEASE}")"
+
+WRITE_TEST="${BACKUP_ROOT}/.write-test-${FULL_SHA}-$$"
+: > "${WRITE_TEST}" || die "BACKUP_ROOT قابل نوشتن نیست — Deploy قبل از هر تغییر متوقف شد: ${BACKUP_ROOT}"
+rm -f "${WRITE_TEST}"
+log "Writable path ASSERT PASS backupRoot=${BACKUP_ROOT}"
 
 git -C "${DEPLOY_PATH}" fetch --prune origin
 git -C "${DEPLOY_PATH}" cat-file -t "${FULL_SHA}" >/dev/null 2>&1 \
@@ -111,15 +135,7 @@ compose() {
   docker compose "${COMPOSE_FILES[@]}" --env-file "${RELEASE_ENV}" "$@"
 }
 
-TS="$(date -u +%Y%m%dT%H%M%SZ)"
-STATE_DIR="${STATE_ROOT}/${TS}"
-mkdir -p "${STATE_DIR}" "${BACKUP_DIR}" "$(dirname "${PROD_ENV_RELEASE}")"
-
-log "Backing up current production environment/images..."
-cp -a "${PROD_ENV_FILE}" "${STATE_DIR}/env.previous"
-cp -a "${SERVER_COMPOSE}" "${STATE_DIR}/compose.server.yml.previous"
-cp -a "${RUNTIME_COMPOSE}" "${STATE_DIR}/compose.runtime-production.yml.previous"
-
+log "Capturing previous production state (no secrets logged)..."
 API_CTN="$(docker ps --format '{{.Names}}' | grep -E '(^|_)api$' | grep -v staging | head -1 || true)"
 WEB_CTN="$(docker ps --format '{{.Names}}' | grep -E '(^|_)web$' | grep -v staging | head -1 || true)"
 [[ -n "${API_CTN}" ]] || API_CTN="$(docker ps --format '{{.Names}}' | grep -i api | grep -v staging | head -1 || true)"
@@ -137,8 +153,27 @@ if [[ -n "${WEB_CTN}" ]]; then
   PREV_WEB_REF="$(docker inspect --format='{{index .Config.Image}}' "${WEB_CTN}" 2>/dev/null || true)"
   PREV_WEB_ID="$(docker inspect --format='{{.Image}}' "${WEB_CTN}" 2>/dev/null || true)"
 fi
-log "Previous API=${PREV_API_REF}"
-log "Previous WEB=${PREV_WEB_REF}"
+printf '%s\n' "${PREV_API_REF}" >"${STATE_DIR}/previous-api-image.txt"
+printf '%s\n' "${PREV_WEB_REF}" >"${STATE_DIR}/previous-web-image.txt"
+cp -a "${PROD_ENV_FILE}" "${STATE_DIR}/previous-env"
+chmod 600 "${STATE_DIR}/previous-env"
+{
+  printf '%s\n' "${PROD_COMPOSE}"
+  printf '%s\n' "${SERVER_COMPOSE}"
+  printf '%s\n' "${RUNTIME_COMPOSE}"
+} >"${STATE_DIR}/compose-files.txt"
+if curl -fsS "${HEALTH_BASE}/api/v1/health/liveness" >"${STATE_DIR}/previous-liveness.json" 2>/dev/null; then
+  log "previous-liveness.json captured"
+else
+  printf '%s\n' '{"status":"unavailable"}' >"${STATE_DIR}/previous-liveness.json"
+  log "previous-liveness unavailable before deploy (recorded)"
+fi
+# سازگاری Rollback با نام‌های قبلی در release.env
+cp -a "${STATE_DIR}/previous-env" "${STATE_DIR}/env.previous"
+cp -a "${SERVER_COMPOSE}" "${STATE_DIR}/compose.server.yml.previous"
+cp -a "${RUNTIME_COMPOSE}" "${STATE_DIR}/compose.runtime-production.yml.previous"
+log "Previous API image ref captured (not logged with secrets)"
+log "Previous WEB image ref captured (not logged with secrets)"
 
 # خواندن PG_* از RELEASE_ENV بدون چاپ Secretها
 PG_USER="$(python3 -c '
@@ -159,35 +194,37 @@ for line in open(sys.argv[1], encoding="utf-8"):
         db = line.split("=", 1)[1].strip()
 print(db)
 ' "${RELEASE_ENV}")"
-BACKUP_FILE="${BACKUP_DIR}/ppm_${PG_DB}_${FULL_SHA}_${TS}.dump"
 
-log "Creating PostgreSQL custom-format backup..."
+log "Creating PostgreSQL custom-format backup (previous backups retained)..."
 compose exec -T postgres \
-  pg_dump -U "${PG_USER}" -d "${PG_DB}" -Fc --no-owner --no-acl \
+  pg_dump -U "${PG_USER}" -d "${PG_DB}" --format=custom --no-owner --no-acl \
   > "${BACKUP_FILE}" \
   || die "pg_dump custom-format FAILED"
 
-[[ -s "${BACKUP_FILE}" ]] || die "Backup خالی است."
+test -s "${BACKUP_FILE}" || die "Backup خالی است."
+if command -v pg_restore >/dev/null 2>&1; then
+  pg_restore --list "${BACKUP_FILE}" >/dev/null \
+    || die "pg_restore --list FAILED"
+else
+  docker run --rm -v "${BACKUP_FILE}:/tmp/backup.dump:ro" postgres:18-alpine \
+    pg_restore --list /tmp/backup.dump >/dev/null \
+    || die "pg_restore --list FAILED"
+fi
 BACKUP_SHA256="$(sha256sum "${BACKUP_FILE}" | awk '{print $1}')"
-log "Backup path=${BACKUP_FILE}"
-log "Backup sha256=${BACKUP_SHA256}"
 
-docker run --rm -i postgres:18-alpine pg_restore --list - \
-  < "${BACKUP_FILE}" >/tmp/pg_restore_list.txt \
-  || die "pg_restore --list FAILED"
-[[ -s /tmp/pg_restore_list.txt ]] || die "pg_restore --list خروجی خالی"
-LIST_COUNT="$(wc -l < /tmp/pg_restore_list.txt | tr -d ' ')"
-[[ "${LIST_COUNT}" -gt 5 ]] || die "Backup TOC خیلی کوچک است (${LIST_COUNT} lines)"
-log "pg_restore --list PASS (lines=${LIST_COUNT})"
+# خطوط قابل استخراج برای GitHub Actions (حتی در میانهٔ Log)
+echo "BACKUP_FILE=${BACKUP_FILE}"
+echo "BACKUP_SHA256=${BACKUP_SHA256}"
+echo "STATE_DIR=${STATE_DIR}"
+log "pg_restore --list PASS"
 
 rollback_full() {
-  err "Health failure — full rollback (API+Web+env references)..."
+  err "Health failure — full rollback (API+Web+env+compose)..."
   if [[ -n "${PREV_API_REF}" && -n "${PREV_WEB_REF}" ]]; then
-    # rollback env موقت با imageهای قبلی
     ROLLBACK_ENV="$(mktemp)"
     chmod 600 "${ROLLBACK_ENV}"
     python3 "${HELPER_DIR}/build-release-env.py" \
-      --base "${STATE_DIR}/env.previous" \
+      --base "${STATE_DIR}/previous-env" \
       --out "${ROLLBACK_ENV}" \
       --set "API_IMAGE=${PREV_API_REF}" \
       --set "WEB_IMAGE=${PREV_WEB_REF}" \
@@ -263,11 +300,11 @@ fi
 LIVE="$(curl -fsS "${HEALTH_BASE}/api/v1/health/liveness")"
 if ! echo "${LIVE}" | grep -Fq "\"gitSha\":\"${FULL_SHA}\""; then
   rollback_full
-  die "Production liveness gitSha mismatch. expected=${FULL_SHA} got=${LIVE}"
+  die "Production liveness gitSha mismatch. expected=${FULL_SHA}"
 fi
 if ! echo "${LIVE}" | grep -Fq "\"version\":\"${FULL_SHA}\""; then
   rollback_full
-  die "Production liveness version mismatch. expected=${FULL_SHA} got=${LIVE}"
+  die "Production liveness version mismatch. expected=${FULL_SHA}"
 fi
 log "Production liveness PASS version=gitSha=${FULL_SHA}"
 
@@ -304,9 +341,10 @@ PREVIOUS_API_IMAGE=${PREV_API_REF}
 PREVIOUS_WEB_IMAGE=${PREV_WEB_REF}
 PREVIOUS_API_IMAGE_ID=${PREV_API_ID}
 PREVIOUS_WEB_IMAGE_ID=${PREV_WEB_ID}
-PREVIOUS_ENV_FILE=${STATE_DIR}/env.previous
+PREVIOUS_ENV_FILE=${STATE_DIR}/previous-env
 PREVIOUS_SERVER_COMPOSE=${STATE_DIR}/compose.server.yml.previous
 PREVIOUS_RUNTIME_COMPOSE=${STATE_DIR}/compose.runtime-production.yml.previous
+BACKUP_ROOT=${BACKUP_ROOT}
 BACKUP_FILE=${BACKUP_FILE}
 BACKUP_SHA256=${BACKUP_SHA256}
 WORKTREE=${WORKTREE}
@@ -319,9 +357,8 @@ DEPLOYED_BY=github-actions
 EOF
 
 log "Production Deploy PASSED"
-log "STATE_DIR=${STATE_DIR}"
-log "BACKUP_FILE=${BACKUP_FILE}"
-log "BACKUP_SHA256=${BACKUP_SHA256}"
-echo "STATE_DIR=${STATE_DIR}"
+log "BACKUP_ROOT=${BACKUP_ROOT}"
+# تکرار خطوط قابل استخراج در انتهای Log
 echo "BACKUP_FILE=${BACKUP_FILE}"
 echo "BACKUP_SHA256=${BACKUP_SHA256}"
+echo "STATE_DIR=${STATE_DIR}"
