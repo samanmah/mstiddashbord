@@ -89,6 +89,22 @@ function previewFixture(
     warningCount: 0,
     infoCount: 0,
     canCommit: true,
+    periodMatrixStats: {
+      periodColumnCount: 147,
+      periodSnapshotsParsed: 0,
+      plannedCount: 0,
+      actualCount: 0,
+      unknownCount: 0,
+      explicitZeroCount: 0,
+      formulaCount: 0,
+      formulaWithoutCachedResultCount: 0,
+      blankSkippedCount: 0,
+      numericSum: 0,
+    },
+    currentPlanVersion: null,
+    nextPlanVersion: 1,
+    existingCommittedImport: null,
+    suggestedCommitMode: 'CREATE_NEW_VERSION',
     ...overrides,
   };
 }

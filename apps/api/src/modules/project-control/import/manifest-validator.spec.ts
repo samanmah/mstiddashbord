@@ -93,6 +93,20 @@ describe('manifest-validator', () => {
           percentComplete: null,
         },
       ],
+      periodColumns: [],
+      periodValues: [],
+      periodMatrixStats: {
+        periodColumnCount: 0,
+        periodSnapshotsParsed: 0,
+        plannedCount: 0,
+        actualCount: 0,
+        unknownCount: 0,
+        explicitZeroCount: 0,
+        formulaCount: 0,
+        formulaWithoutCachedResultCount: 0,
+        blankSkippedCount: 0,
+        numericSum: 0,
+      },
       issues: [],
     };
     const tree = buildWbsTree(parsed.rows, 'root');

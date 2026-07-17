@@ -108,6 +108,18 @@ describe('GanttExcelParserService (Fixture کامل)', () => {
     expect(tree.phaseCount + tree.break1Count + tree.taskCount).toBe(tree.nodes.length);
     expect(tree.nodes.length).toBeGreaterThan(142);
   });
+
+  it('ماتریس دوره‌ای: ۱۴۷ ستون و تفکیک Planned/Actual/Zero/Formula', () => {
+    expect(parsed.periodMatrixStats.periodColumnCount).toBe(147);
+    expect(parsed.periodValues.length).toBe(parsed.periodMatrixStats.periodSnapshotsParsed);
+    expect(parsed.periodMatrixStats.explicitZeroCount).toBeGreaterThan(0);
+    expect(parsed.periodMatrixStats.plannedCount).toBeGreaterThan(0);
+    expect(parsed.periodMatrixStats.actualCount).toBeGreaterThan(0);
+    expect(parsed.periodMatrixStats.formulaCount).toBeGreaterThan(0);
+    expect(parsed.periodMatrixStats.formulaWithoutCachedResultCount).toBeGreaterThan(0);
+    const zero = parsed.periodValues.find((v) => v.normalizedValue === 0);
+    expect(zero?.zeroIsExplicit).toBe(true);
+  });
 });
 
 describe('GanttExcelParserService (Edge Fixture)', () => {

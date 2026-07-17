@@ -1,10 +1,15 @@
-import { ControlImportStatus, type ParsedExcelWorkbook } from '@ppm/contracts';
+import {
+  ControlImportStatus,
+  ImportCommitMode,
+  type ParsedExcelWorkbook,
+} from '@ppm/contracts';
+import { emptyPeriodMatrixStats } from './period-matrix';
 import { ControlImportService } from './control-import.service';
 
-function emptyParsed(): ParsedExcelWorkbook {
+function emptyParsed(overrides: Partial<ParsedExcelWorkbook> = {}): ParsedExcelWorkbook {
   return {
     fileHash: 'hash',
-    parserVersion: 'excel-gantt-1.0.0',
+    parserVersion: 'excel-gantt-1.2.0',
     manifest: {
       phaseCount: 1,
       break1Count: 1,
@@ -52,11 +57,15 @@ function emptyParsed(): ParsedExcelWorkbook {
         percentComplete: null,
       },
     ],
+    periodColumns: [],
+    periodValues: [],
+    periodMatrixStats: emptyPeriodMatrixStats(),
     issues: [],
+    ...overrides,
   };
 }
 
-describe('ControlImportService — Rollback', () => {
+describe('ControlImportService — Rollback Transaction', () => {
   it('در صورت خطای Transaction، Batch را FAILED می‌کند و خطا را منتشر می‌کند', async () => {
     const prisma = {
       $transaction: jest.fn().mockRejectedValue(new Error('boom')),
@@ -97,5 +106,61 @@ describe('ControlImportService — Rollback', () => {
       service.commitParsed('project-id', null, emptyParsed(), 'hash', { userId: null }),
     ).rejects.toThrow('boom2');
     expect(prisma.importBatch.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('ControlImportService — Idempotency / Reuse', () => {
+  it('REUSE_EXISTING بدون ساخت Plan جدید برمی‌گردد', async () => {
+    const existingPlanId = 'plan-existing';
+    const prisma = {
+      importBatch: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'batch-new',
+            projectId: 'project-id',
+            originalFilename: 'file.xlsx::stored',
+            fileHash: 'abc123',
+            status: ControlImportStatus.VALIDATED,
+          })
+          .mockResolvedValueOnce({
+            id: 'old-batch',
+            controlPlanId: existingPlanId,
+            completedAt: new Date('2026-01-01'),
+            controlPlan: { version: 3 },
+          }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      project: { findUnique: jest.fn() },
+      $transaction: jest.fn(),
+    };
+
+    const service = new ControlImportService(
+      prisma as never,
+      {} as never,
+      { record: jest.fn().mockResolvedValue(undefined) } as never,
+      { get: () => ({ upload: { dir: '/tmp' } }) } as never,
+    );
+
+    const proto = Object.getPrototypeOf(service) as {
+      readStoredFile: (name: string) => Promise<Buffer>;
+      sha256: (buf: Buffer) => string;
+    };
+    jest.spyOn(proto, 'readStoredFile').mockResolvedValue(Buffer.from('x'));
+    jest.spyOn(proto, 'sha256').mockReturnValue('abc123');
+
+    const result = await service.commit(
+      'project-id',
+      'batch-new',
+      true,
+      { userId: 'u1' },
+      ImportCommitMode.REUSE_EXISTING,
+    );
+
+    expect(result.reusedExisting).toBe(true);
+    expect(result.status).toBe('REUSED');
+    expect(result.controlPlanId).toBe(existingPlanId);
+    expect(result.activePlanSwitched).toBe(false);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
