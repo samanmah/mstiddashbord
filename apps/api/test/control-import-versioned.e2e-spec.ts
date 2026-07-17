@@ -111,6 +111,7 @@ describe('Control Import versioned (e2e)', () => {
     expect(commit.body.activePlanSwitched).toBe(true);
     expect(commit.body.createdNodes).toBe(173);
     expect(commit.body.periodSnapshotsCreated).toBe(stats.periodSnapshotsParsed);
+    expect(commit.body.periodDefinitionsPersisted).toBe(147);
     expect(commit.body.newPlanVersion).toBe(1);
     expect(commit.body.rollbackAvailable).toBe(false);
 
@@ -119,6 +120,11 @@ describe('Control Import versioned (e2e)', () => {
       where: { controlPlanId: planId, deletedAt: null },
     });
     expect(nodesWithRoot).toBe(174);
+
+    const periodDefs = await prisma.controlPeriodColumn.count({
+      where: { controlPlanId: planId },
+    });
+    expect(periodDefs).toBe(147);
 
     const snapshots = await prisma.nodePeriodSnapshot.count({
       where: { controlPlanId: planId },

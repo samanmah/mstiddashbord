@@ -95,6 +95,7 @@ describe('manifest-validator', () => {
       ],
       periodColumns: [],
       periodValues: [],
+      ganttSpans: [],
       periodMatrixStats: {
         periodColumnCount: 0,
         periodSnapshotsParsed: 0,
@@ -106,6 +107,12 @@ describe('manifest-validator', () => {
         formulaWithoutCachedResultCount: 0,
         blankSkippedCount: 0,
         numericSum: 0,
+        timelineClassification: 'EMPTY_PERIOD_MATRIX',
+        periodDefinitions: 0,
+        explicitPeriodSnapshots: 0,
+        derivedGanttSpanCount: 0,
+        derivedBarCellCount: 0,
+        conditionalFormattingRuleCount: 0,
       },
       issues: [],
     };

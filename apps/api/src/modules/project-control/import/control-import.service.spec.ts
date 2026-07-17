@@ -59,6 +59,7 @@ function emptyParsed(overrides: Partial<ParsedExcelWorkbook> = {}): ParsedExcelW
     ],
     periodColumns: [],
     periodValues: [],
+    ganttSpans: [],
     periodMatrixStats: emptyPeriodMatrixStats(),
     issues: [],
     ...overrides,
@@ -131,6 +132,12 @@ describe('ControlImportService — Idempotency / Reuse', () => {
           }),
         update: jest.fn().mockResolvedValue({}),
       },
+      controlPeriodColumn: { count: jest.fn().mockResolvedValue(147) },
+      nodeGanttSpan: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      nodePeriodSnapshot: { count: jest.fn().mockResolvedValue(0) },
       project: { findUnique: jest.fn() },
       $transaction: jest.fn(),
     };
