@@ -7,6 +7,8 @@ import {
   ImportIssueLevel,
   normalizeText,
   parseNumeric,
+  PeriodAxisType,
+  TimelineClassification,
   type ImportIssue,
   type ParsedNodePeriodValue,
   type ParsedPeriodColumn,
@@ -128,6 +130,9 @@ export function readPeriodMatrix(
       periodLabel: String(Math.round(periodIndex)),
       periodGroup,
       valueType,
+      axisType: PeriodAxisType.ORDINAL,
+      calendarStart: null,
+      calendarEnd: null,
       reportingDate: null,
     });
   }
@@ -232,6 +237,15 @@ export function readPeriodMatrix(
     formulaWithoutCachedResultCount,
     blankSkippedCount,
     numericSum,
+    timelineClassification:
+      periodValues.length > 0
+        ? TimelineClassification.EXPLICIT_VALUES
+        : TimelineClassification.EMPTY_PERIOD_MATRIX,
+    periodDefinitions: periodColumns.length,
+    explicitPeriodSnapshots: periodValues.length,
+    derivedGanttSpanCount: 0,
+    derivedBarCellCount: 0,
+    conditionalFormattingRuleCount: 0,
   };
 
   return { periodColumns, periodValues, stats, issues };
@@ -249,5 +263,11 @@ export function emptyPeriodMatrixStats(): PeriodMatrixStats {
     formulaWithoutCachedResultCount: 0,
     blankSkippedCount: 0,
     numericSum: 0,
+    timelineClassification: TimelineClassification.EMPTY_PERIOD_MATRIX,
+    periodDefinitions: 0,
+    explicitPeriodSnapshots: 0,
+    derivedGanttSpanCount: 0,
+    derivedBarCellCount: 0,
+    conditionalFormattingRuleCount: 0,
   };
 }

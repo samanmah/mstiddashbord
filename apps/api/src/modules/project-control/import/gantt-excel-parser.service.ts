@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   EXCEL_PARSER_VERSION,
+  TimelineClassification,
   type ExcelManifest,
   type ImportIssue,
   ImportIssueCode,
@@ -9,11 +10,17 @@ import {
   normalizeText,
   parseNumeric,
   type ParsedExcelWorkbook,
+  type ParsedGanttSpan,
   type ParsedWbsRow,
   toLatinDigits,
 } from '@ppm/contracts';
 import ExcelJS from 'exceljs';
 import { createHash } from 'node:crypto';
+import {
+  evaluateStyleGantt,
+  type TaskScheduleScalars,
+} from './gantt-cf-evaluator';
+import { readGanttConditionalFormattingRules } from './gantt-cf-ooxml';
 import {
   computeOutlineLevels,
   countLeadingSpaces,
@@ -159,6 +166,43 @@ export class GanttExcelParserService {
       manifest.periodCount = matrix.stats.periodColumnCount;
     }
 
+    const cfRules = await readGanttConditionalFormattingRules(buffer);
+    const tasks: TaskScheduleScalars[] = rows.map((r) => ({
+      sourceRow: r.sourceRow,
+      planStart: r.periodPlanStart,
+      planDuration: r.periodPlanDuration,
+      actualStart: r.periodActualStart,
+      actualDuration: r.periodActualDuration,
+      percentComplete: r.percentComplete,
+    }));
+
+    let ganttSpans: ParsedGanttSpan[] = [];
+    const stats = { ...matrix.stats };
+    stats.conditionalFormattingRuleCount = cfRules.length;
+    stats.periodDefinitions = matrix.periodColumns.length;
+    stats.explicitPeriodSnapshots = matrix.periodValues.length;
+
+    if (matrix.periodValues.length > 0) {
+      stats.timelineClassification = TimelineClassification.EXPLICIT_VALUES;
+      stats.derivedGanttSpanCount = 0;
+      stats.derivedBarCellCount = 0;
+    } else {
+      const styleEval = evaluateStyleGantt({
+        tasks,
+        periodColumnCount: matrix.periodColumns.length,
+        axisMin: 1,
+        axisMax: Math.max(1, matrix.periodColumns.length),
+        rules: cfRules,
+      });
+      ganttSpans = styleEval.spans;
+      stats.timelineClassification = styleEval.timelineClassification;
+      stats.derivedGanttSpanCount = styleEval.derivedGanttSpanCount;
+      stats.derivedBarCellCount = styleEval.derivedBarCellCount;
+      stats.conditionalFormattingRuleCount = styleEval.conditionalFormattingRuleCount;
+      // INFO برای STYLE_BASED؛ هشدار «خالی بودن ماتریس» صادر نمی‌شود.
+      issues.push(...styleEval.issues);
+    }
+
     this.emitDataQualityIssues(rows, issues);
 
     return {
@@ -168,7 +212,8 @@ export class GanttExcelParserService {
       rows,
       periodColumns: matrix.periodColumns,
       periodValues: matrix.periodValues,
-      periodMatrixStats: matrix.stats,
+      ganttSpans,
+      periodMatrixStats: stats,
       issues,
     };
   }
@@ -200,6 +245,7 @@ export class GanttExcelParserService {
       rows: [],
       periodColumns: [],
       periodValues: [],
+      ganttSpans: [],
       periodMatrixStats: emptyPeriodMatrixStats(),
       issues,
     };

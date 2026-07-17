@@ -25,7 +25,13 @@ import {
   WeightSource,
 } from '@ppm/contracts';
 import { emptyPeriodMatrixStats } from './period-matrix';
-import { type Prisma } from '@prisma/client';
+import {
+  GanttDerivationMethod,
+  GanttSpanType,
+  PeriodAxisType,
+  type Prisma,
+} from '@prisma/client';
+import { countDerivedBarCells } from './gantt-cf-evaluator';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -456,13 +462,48 @@ export class ControlImportService {
           importedRows: 0,
         },
       });
+      const [periodDefinitionsPersisted, ganttSpansCreated, snapshotCount] =
+        await Promise.all([
+          this.prisma.controlPeriodColumn.count({
+            where: { controlPlanId: existing.controlPlanId },
+          }),
+          this.prisma.nodeGanttSpan.count({
+            where: { controlPlanId: existing.controlPlanId },
+          }),
+          this.prisma.nodePeriodSnapshot.count({
+            where: { controlPlanId: existing.controlPlanId },
+          }),
+        ]);
+      const existingSpans = await this.prisma.nodeGanttSpan.findMany({
+        where: { controlPlanId: existing.controlPlanId },
+        select: {
+          sourceRow: true,
+          spanType: true,
+          startPeriodIndex: true,
+          endPeriodIndex: true,
+          progressEndPeriodIndex: true,
+          derivationMethod: true,
+        },
+      });
       const result: ControlImportCommitResult = {
         importBatchId,
         controlPlanId: existing.controlPlanId,
         previousControlPlanId: existing.controlPlanId,
         createdNodes: 0,
         updatedNodes: 0,
-        periodSnapshotsCreated: 0,
+        periodSnapshotsCreated: snapshotCount,
+        periodDefinitionsPersisted,
+        ganttSpansCreated,
+        derivedBarCellCountFromPersistedSpans: countDerivedBarCells(
+          existingSpans.map((s) => ({
+            sourceRow: s.sourceRow ?? 0,
+            spanType: s.spanType,
+            startPeriodIndex: s.startPeriodIndex,
+            endPeriodIndex: s.endPeriodIndex,
+            progressEndPeriodIndex: s.progressEndPeriodIndex,
+            derivationMethod: s.derivationMethod,
+          })),
+        ),
         assignmentsCreated: 0,
         dependenciesCreated: 0,
         newPlanVersion: existing.planVersion,
@@ -614,6 +655,7 @@ export class ControlImportService {
           },
         });
 
+        let periodDefinitionsPersisted = 0;
         if (parsed.periodColumns.length > 0) {
           await tx.controlPeriodColumn.createMany({
             data: parsed.periodColumns.map((c) => ({
@@ -625,8 +667,12 @@ export class ControlImportService {
               periodLabel: c.periodLabel,
               periodGroup: c.periodGroup,
               valueType: c.valueType as PeriodValueType,
+              axisType: (c.axisType as PeriodAxisType) ?? PeriodAxisType.ORDINAL,
+              calendarStart: null,
+              calendarEnd: null,
             })),
           });
+          periodDefinitionsPersisted = parsed.periodColumns.length;
         }
 
         const tree = buildWbsTree(parsed.rows, rootId);
@@ -786,6 +832,64 @@ export class ControlImportService {
           }
         }
 
+        // NodeGanttSpan — بازه‌ها نه سلول‌های رنگی
+        let ganttSpansCreated = 0;
+        const spanPayload = [];
+        for (const span of parsed.ganttSpans ?? []) {
+          const nodeId = nodeIdBySourceRow.get(span.sourceRow);
+          if (!nodeId) continue;
+          if (span.endPeriodIndex < span.startPeriodIndex) {
+            throw new BadRequestException({
+              code: ErrorCode.IMPORT_ERROR,
+              message: `بازهٔ گانت معکوس در سطر ${span.sourceRow}.`,
+            });
+          }
+          spanPayload.push({
+            projectId,
+            controlPlanId: planId,
+            nodeId,
+            spanType: span.spanType as GanttSpanType,
+            startPeriodIndex: span.startPeriodIndex,
+            endPeriodIndex: span.endPeriodIndex,
+            progressEndPeriodIndex: span.progressEndPeriodIndex,
+            sourceRow: span.sourceRow,
+            derivationMethod: span.derivationMethod as GanttDerivationMethod,
+          });
+        }
+        if (spanPayload.length > 0) {
+          const chunk = 500;
+          for (let i = 0; i < spanPayload.length; i += chunk) {
+            const part = spanPayload.slice(i, i + chunk);
+            await tx.nodeGanttSpan.createMany({ data: part });
+            ganttSpansCreated += part.length;
+          }
+        }
+        const derivedBarCellCountFromPersistedSpans = countDerivedBarCells(
+          (parsed.ganttSpans ?? []).filter((s) => nodeIdBySourceRow.has(s.sourceRow)),
+        );
+        if (
+          parsed.periodMatrixStats.timelineClassification === 'STYLE_BASED_GANTT' &&
+          parsed.periodMatrixStats.derivedBarCellCount > 0 &&
+          derivedBarCellCountFromPersistedSpans !==
+            parsed.periodMatrixStats.derivedBarCellCount
+        ) {
+          throw new BadRequestException({
+            code: ErrorCode.IMPORT_ERROR,
+            message: 'derivedBarCellCount از Spanهای Persist‌شده با Parse برابر نیست.',
+          });
+        }
+
+        // Pre-activation integrity for style/period timeline
+        const nodesWithoutRoot = await tx.wbsNode.count({
+          where: { controlPlanId: planId, deletedAt: null, nodeType: { not: WbsNodeType.PROJECT } },
+        });
+        if (nodesWithoutRoot !== created) {
+          throw new BadRequestException({
+            code: ErrorCode.IMPORT_ERROR,
+            message: `تعداد نود بدون Root نامعتبر است: ${nodesWithoutRoot}`,
+          });
+        }
+
         // فعال‌سازی اتمیک در انتهای موفقیت
         if (previousPlanId) {
           await tx.projectControlPlan.update({
@@ -833,6 +937,12 @@ export class ControlImportService {
               validationReport: {
                 periodSnapshotsCreated,
                 periodColumnCount: parsed.periodMatrixStats.periodColumnCount,
+                periodDefinitionsPersisted,
+                ganttSpansCreated,
+                derivedBarCellCountFromPersistedSpans,
+                timelineClassification: parsed.periodMatrixStats.timelineClassification,
+                conditionalFormattingRuleCount:
+                  parsed.periodMatrixStats.conditionalFormattingRuleCount,
                 nodesWithRoot,
               } as unknown as Prisma.InputJsonValue,
             },
@@ -846,6 +956,9 @@ export class ControlImportService {
           createdNodes: created,
           updatedNodes: 0,
           periodSnapshotsCreated,
+          periodDefinitionsPersisted,
+          ganttSpansCreated,
+          derivedBarCellCountFromPersistedSpans,
           assignmentsCreated,
           dependenciesCreated: 0,
           newPlanVersion: newVersion,
