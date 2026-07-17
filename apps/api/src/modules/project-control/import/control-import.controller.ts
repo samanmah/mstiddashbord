@@ -153,7 +153,13 @@ export class ControlImportController {
         message: 'برای Commit باید confirm=true ارسال شود.',
       });
     }
-    return this.service.commit(projectId, id, dto.allowWarnings ?? false, getRequestContext(req));
+    return this.service.commit(
+      projectId,
+      id,
+      dto.allowWarnings ?? false,
+      getRequestContext(req),
+      dto.mode,
+    );
   }
 
   @Get()

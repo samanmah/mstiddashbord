@@ -149,4 +149,59 @@ export class ProjectControlService {
 
     return mapControlPlan(result);
   }
+
+  /**
+   * فعال‌سازی مجدد یک Control Plan قبلی (Rollback نسخه‌ای).
+   * Plan فعلی غیرفعال و Plan هدف فعال می‌شود — داده‌ها حذف نمی‌شوند.
+   */
+  async activatePlan(projectId: string, planId: string, ctx: AuditContext) {
+    const project = await this.requireProject(projectId);
+    const target = await this.prisma.projectControlPlan.findFirst({
+      where: { id: planId, projectId },
+    });
+    if (!target) {
+      throw new NotFoundException({
+        code: ErrorCode.NOT_FOUND,
+        message: 'برنامهٔ کنترل یافت نشد.',
+      });
+    }
+    if (project.activeControlPlanId === planId && target.isActive) {
+      return mapControlPlan(target);
+    }
+
+    const previousPlanId = project.activeControlPlanId;
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (previousPlanId && previousPlanId !== planId) {
+        await tx.projectControlPlan.update({
+          where: { id: previousPlanId },
+          data: { isActive: false, updatedByUserId: ctx.userId ?? null },
+        });
+      }
+      const activated = await tx.projectControlPlan.update({
+        where: { id: planId },
+        data: { isActive: true, updatedByUserId: ctx.userId ?? null },
+      });
+      await tx.project.update({
+        where: { id: projectId },
+        data: {
+          activeControlPlanId: planId,
+          controlVersion: activated.version,
+          projectControlEnabled: true,
+        },
+      });
+      return activated;
+    });
+
+    await this.audit.record({
+      ...ctx,
+      projectId,
+      entityType: 'ProjectControlPlan',
+      entityId: result.id,
+      action: AuditAction.UPDATE,
+      oldValue: previousPlanId ? { activeControlPlanId: previousPlanId } : null,
+      newValue: { activated: true, version: result.version },
+    });
+
+    return mapControlPlan(result);
+  }
 }

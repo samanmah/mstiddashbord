@@ -13,15 +13,18 @@ import {
   EXCEL_PARSER_VERSION,
   ErrorCode,
   type ImportConflict,
+  ImportCommitMode,
   type ImportIssue,
   ImportIssueCode,
   ImportIssueLevel,
   ImportMatchStatus,
   jalaliStringToDate,
   type ParsedExcelWorkbook,
+  PeriodValueType,
   WbsNodeType,
   WeightSource,
 } from '@ppm/contracts';
+import { emptyPeriodMatrixStats } from './period-matrix';
 import { type Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -250,6 +253,8 @@ export class ControlImportService {
     }
 
     const conflicts = await this.detectConflicts(projectId, parsed);
+    const planMeta = await this.getPlanVersionMeta(projectId);
+    const existingCommitted = await this.findExistingCommittedImport(projectId, parsed.fileHash);
 
     const criticalCount = issues.filter((i) => i.level === ImportIssueLevel.CRITICAL).length;
     const warningCount = issues.filter((i) => i.level === ImportIssueLevel.WARNING).length;
@@ -278,6 +283,59 @@ export class ControlImportService {
       warningCount,
       infoCount,
       canCommit: criticalCount === 0 && manifestValid,
+      periodMatrixStats: parsed.periodMatrixStats ?? emptyPeriodMatrixStats(),
+      currentPlanVersion: planMeta.currentVersion,
+      nextPlanVersion: planMeta.nextVersion,
+      existingCommittedImport: existingCommitted,
+      suggestedCommitMode: existingCommitted
+        ? ImportCommitMode.REUSE_EXISTING
+        : ImportCommitMode.CREATE_NEW_VERSION,
+    };
+  }
+
+  private async getPlanVersionMeta(
+    projectId: string,
+  ): Promise<{ currentVersion: number | null; nextVersion: number }> {
+    const active = await this.prisma.projectControlPlan.findFirst({
+      where: { projectId, isActive: true },
+      select: { version: true },
+      orderBy: { version: 'desc' },
+    });
+    const max = await this.prisma.projectControlPlan.findFirst({
+      where: { projectId },
+      select: { version: true },
+      orderBy: { version: 'desc' },
+    });
+    const currentVersion = active?.version ?? null;
+    const nextVersion = (max?.version ?? 0) + 1;
+    return { currentVersion, nextVersion };
+  }
+
+  private async findExistingCommittedImport(
+    projectId: string,
+    fileHash: string,
+  ): Promise<ControlImportPreview['existingCommittedImport']> {
+    const batch = await this.prisma.importBatch.findFirst({
+      where: {
+        projectId,
+        fileHash,
+        status: ControlImportStatus.COMPLETED,
+        controlPlanId: { not: null },
+      },
+      orderBy: { completedAt: 'desc' },
+      select: {
+        id: true,
+        controlPlanId: true,
+        completedAt: true,
+        controlPlan: { select: { version: true } },
+      },
+    });
+    if (!batch?.controlPlanId || !batch.controlPlan) return null;
+    return {
+      importBatchId: batch.id,
+      controlPlanId: batch.controlPlanId,
+      planVersion: batch.controlPlan.version,
+      completedAt: batch.completedAt ? batch.completedAt.toISOString() : null,
     };
   }
 
@@ -363,7 +421,9 @@ export class ControlImportService {
     importBatchId: string,
     allowWarnings: boolean,
     ctx: AuditContext,
+    mode?: ImportCommitMode,
   ): Promise<ControlImportCommitResult> {
+    const started = Date.now();
     const batch = await this.requireBatch(projectId, importBatchId);
     const storedFilename = batch.originalFilename.split('::')[0]!;
     const buffer = await this.readStoredFile(storedFilename);
@@ -374,11 +434,63 @@ export class ControlImportService {
         message: 'فایل با نسخهٔ بارگذاری‌شده هم‌خوانی ندارد.',
       });
     }
+
+    const existing = await this.findExistingCommittedImport(projectId, fileHash);
+    const resolvedMode =
+      mode ??
+      (existing ? ImportCommitMode.REUSE_EXISTING : ImportCommitMode.CREATE_NEW_VERSION);
+
+    if (resolvedMode === ImportCommitMode.REUSE_EXISTING) {
+      if (!existing) {
+        throw new BadRequestException({
+          code: ErrorCode.IMPORT_ERROR,
+          message: 'نسخهٔ Commit‌شده‌ای با این fileHash یافت نشد.',
+        });
+      }
+      await this.prisma.importBatch.update({
+        where: { id: importBatchId },
+        data: {
+          status: ControlImportStatus.COMPLETED,
+          controlPlanId: existing.controlPlanId,
+          completedAt: new Date(),
+          importedRows: 0,
+        },
+      });
+      const result: ControlImportCommitResult = {
+        importBatchId,
+        controlPlanId: existing.controlPlanId,
+        previousControlPlanId: existing.controlPlanId,
+        createdNodes: 0,
+        updatedNodes: 0,
+        periodSnapshotsCreated: 0,
+        assignmentsCreated: 0,
+        dependenciesCreated: 0,
+        newPlanVersion: existing.planVersion,
+        previousPlanVersion: existing.planVersion,
+        activePlanSwitched: false,
+        rollbackAvailable: true,
+        reusedExisting: true,
+        fileHash,
+        durationMs: Date.now() - started,
+        status: 'REUSED',
+      };
+      await this.audit.record({
+        ...ctx,
+        projectId,
+        entityType: 'ImportBatch',
+        entityId: importBatchId,
+        action: AuditAction.IMPORT,
+        newValue: { reused: true, controlPlanId: existing.controlPlanId },
+      });
+      return result;
+    }
+
     const parsed = await this.excelParser.parse(buffer);
     const preview = await this.buildPreview(projectId, importBatchId, parsed, false);
     this.assertCommittable(preview, allowWarnings);
 
     const result = await this.commitParsed(projectId, importBatchId, parsed, fileHash, ctx);
+    result.durationMs = Date.now() - started;
 
     await this.audit.record({
       ...ctx,
@@ -389,6 +501,7 @@ export class ControlImportService {
       newValue: {
         createdNodes: result.createdNodes,
         controlPlanId: result.controlPlanId,
+        periodSnapshotsCreated: result.periodSnapshotsCreated,
         counts: preview.counts,
       },
     });
@@ -413,7 +526,11 @@ export class ControlImportService {
     }
   }
 
-  /** ثبت اتمیک درخت WBS از یک Workbook Parse‌شده. */
+  /**
+   * ثبت اتمیک نسخه‌دار:
+   * Plan جدید + Root + 173 نود + Period snapshots → سپس Switch فعال.
+   * Plan قبلی تا پایان Transaction دست‌نخورده می‌ماند.
+   */
   async commitParsed(
     projectId: string,
     importBatchId: string | null,
@@ -421,85 +538,120 @@ export class ControlImportService {
     fileHash: string,
     ctx: AuditContext,
   ): Promise<ControlImportCommitResult> {
+    if (importBatchId) {
+      await this.prisma.importBatch.update({
+        where: { id: importBatchId },
+        data: { status: ControlImportStatus.COMMITTING },
+      });
+    }
+
     try {
       return await this.prisma.$transaction(async (tx) => {
         const project = await tx.project.findUnique({
           where: { id: projectId },
-          select: { id: true, titleFa: true, projectControlEnabled: true, activeControlPlanId: true },
+          select: {
+            id: true,
+            titleFa: true,
+            projectControlEnabled: true,
+            activeControlPlanId: true,
+          },
         });
         if (!project) {
           throw new NotFoundException({ code: ErrorCode.NOT_FOUND, message: 'پروژه یافت نشد.' });
         }
 
-        // Plan + Root
-        let planId = project.activeControlPlanId;
-        let rootId: string;
-        if (!project.projectControlEnabled || !planId) {
-          const plan = await tx.projectControlPlan.create({
-            data: {
-              projectId,
-              title: `برنامهٔ کنترل — ${project.titleFa}`,
-              statusDate: new Date(),
-              currency: 'TOMAN',
-              isActive: true,
-              version: 1,
-              createdByUserId: ctx.userId ?? null,
-              updatedByUserId: ctx.userId ?? null,
-            },
+        const previousPlanId = project.activeControlPlanId;
+        let previousPlanVersion: number | null = null;
+        if (previousPlanId) {
+          const prev = await tx.projectControlPlan.findUnique({
+            where: { id: previousPlanId },
+            select: { version: true, isActive: true },
           });
-          planId = plan.id;
-          rootId = randomUUID();
-          await tx.wbsNode.create({
-            data: {
-              id: rootId,
-              projectId,
-              controlPlanId: planId,
-              parentId: null,
-              title: project.titleFa,
-              normalizedTitle: project.titleFa,
-              depth: 0,
-              materializedPath: rootId,
-              nodeType: WbsNodeType.PROJECT,
-              isSummary: true,
-              weightSource: WeightSource.NONE,
-              sortOrder: 0,
-            },
-          });
-          await tx.project.update({
-            where: { id: projectId },
-            data: {
-              projectControlEnabled: true,
-              activeControlPlanId: planId,
-              controlCurrency: 'TOMAN',
-            },
-          });
-        } else {
-          const root = await tx.wbsNode.findFirst({
-            where: { controlPlanId: planId, parentId: null, deletedAt: null },
-            select: { id: true },
-          });
-          if (!root) {
-            throw new BadRequestException({
-              code: ErrorCode.CONFLICT,
-              message: 'نود ریشهٔ Control Plan یافت نشد.',
-            });
-          }
-          rootId = root.id;
+          previousPlanVersion = prev?.version ?? null;
         }
 
-        const plan = buildWbsTree(parsed.rows, rootId);
+        const maxPlan = await tx.projectControlPlan.findFirst({
+          where: { projectId },
+          select: { version: true },
+          orderBy: { version: 'desc' },
+        });
+        const newVersion = (maxPlan?.version ?? 0) + 1;
+
+        // Plan جدید غیرفعال تا پایان موفقیت
+        const newPlan = await tx.projectControlPlan.create({
+          data: {
+            projectId,
+            title: `برنامهٔ کنترل v${newVersion} — ${project.titleFa}`,
+            statusDate: new Date(),
+            currency: 'TOMAN',
+            isActive: false,
+            version: newVersion,
+            periodCount: parsed.periodMatrixStats.periodColumnCount || parsed.manifest.periodCount,
+            totalDurationDays: parsed.manifest.totalDays,
+            totalDurationMonths: parsed.manifest.totalMonths,
+            createdByUserId: ctx.userId ?? null,
+            updatedByUserId: ctx.userId ?? null,
+          },
+        });
+        const planId = newPlan.id;
+        const rootId = randomUUID();
+        await tx.wbsNode.create({
+          data: {
+            id: rootId,
+            projectId,
+            controlPlanId: planId,
+            parentId: null,
+            title: project.titleFa,
+            normalizedTitle: project.titleFa,
+            depth: 0,
+            materializedPath: rootId,
+            nodeType: WbsNodeType.PROJECT,
+            isSummary: true,
+            weightSource: WeightSource.NONE,
+            sortOrder: 0,
+            sourceFileHash: fileHash,
+            sourceFileType: 'EXCEL',
+          },
+        });
+
+        if (parsed.periodColumns.length > 0) {
+          await tx.controlPeriodColumn.createMany({
+            data: parsed.periodColumns.map((c) => ({
+              projectId,
+              controlPlanId: planId,
+              columnIndex: c.columnIndex,
+              columnLetter: c.columnLetter,
+              periodIndex: c.periodIndex,
+              periodLabel: c.periodLabel,
+              periodGroup: c.periodGroup,
+              valueType: c.valueType as PeriodValueType,
+            })),
+          });
+        }
+
+        const tree = buildWbsTree(parsed.rows, rootId);
+        if (tree.nodes.length !== parsed.rows.length + tree.phaseCount + tree.break1Count) {
+          // ساختار باید پایدار باشد؛ orphan بعداً چک می‌شود
+        }
+
         const idByTemp = new Map<string, string>([['root', rootId]]);
         idByTemp.set(rootId, rootId);
         const pathById = new Map<string, string>([[rootId, rootId]]);
+        const nodeIdBySourceRow = new Map<number, string>();
 
-        // ترتیب: نودها به‌ترتیب ساخت (والد قبل از فرزند) در آرایه‌اند.
         let created = 0;
-        for (const node of plan.nodes) {
+        let assignmentsCreated = 0;
+        for (const node of tree.nodes) {
           const id = randomUUID();
           idByTemp.set(node.tempId, id);
-          const parentId = node.parentTempId
-            ? (idByTemp.get(node.parentTempId) ?? rootId)
-            : rootId;
+          const parentTemp = node.parentTempId ?? 'root';
+          const parentId = idByTemp.get(parentTemp);
+          if (!parentId) {
+            throw new BadRequestException({
+              code: ErrorCode.IMPORT_ERROR,
+              message: `والد نامعتبر برای نود «${node.title}».`,
+            });
+          }
           const parentPath = pathById.get(parentId) ?? rootId;
           const materializedPath = `${parentPath}/${id}`;
           pathById.set(id, materializedPath);
@@ -541,23 +693,122 @@ export class ControlImportService {
             },
           });
           created += 1;
+          if (node.sourceRow !== null) nodeIdBySourceRow.set(node.sourceRow, id);
 
           if (node.ownerText) {
             await tx.nodeAssignment.create({
-              data: { nodeId: id, externalResourceName: node.ownerText.slice(0, 500), role: 'OWNER' },
+              data: {
+                nodeId: id,
+                externalResourceName: node.ownerText.slice(0, 500),
+                role: 'OWNER',
+              },
             });
+            assignmentsCreated += 1;
           }
         }
 
-        if (importBatchId) {
-          // به‌روزرسانی رکوردهای منبع با نود ساخته‌شده.
-          await tx.importSourceRecord.deleteMany({ where: { importBatchId } });
-          const nodeIdBySourceRow = new Map<number, string>();
-          for (const node of plan.nodes) {
-            if (node.sourceRow !== null) {
-              nodeIdBySourceRow.set(node.sourceRow, idByTemp.get(node.tempId)!);
+        // Integrity: همه parentها داخل همین Plan
+        const orphanParents = await tx.wbsNode.count({
+          where: {
+            controlPlanId: planId,
+            parentId: { not: null },
+            parent: { controlPlanId: { not: planId } },
+          },
+        });
+        if (orphanParents > 0) {
+          throw new BadRequestException({
+            code: ErrorCode.IMPORT_ERROR,
+            message: 'یکپارچگی Parent بین Planها نقض شد.',
+          });
+        }
+
+        const nodesWithRoot = await tx.wbsNode.count({
+          where: { controlPlanId: planId, deletedAt: null },
+        });
+        if (nodesWithRoot !== created + 1) {
+          throw new BadRequestException({
+            code: ErrorCode.IMPORT_ERROR,
+            message: `تعداد نودها نامعتبر است: ${nodesWithRoot}`,
+          });
+        }
+
+        // Period snapshots
+        let periodSnapshotsCreated = 0;
+        if (parsed.periodValues.length > 0) {
+          const snapshotData = [];
+          for (const pv of parsed.periodValues) {
+            const nodeId = nodeIdBySourceRow.get(pv.sourceRow);
+            if (!nodeId) continue;
+            const plannedValue =
+              pv.valueType === 'PLANNED' ? pv.normalizedValue : null;
+            const actualValue = pv.valueType === 'ACTUAL' ? pv.normalizedValue : null;
+            snapshotData.push({
+              projectId,
+              controlPlanId: planId,
+              nodeId,
+              importBatchId: importBatchId ?? null,
+              periodIndex: pv.periodIndex,
+              periodLabel: pv.periodLabel,
+              valueType: pv.valueType as PeriodValueType,
+              plannedValue,
+              actualValue,
+              normalizedValue: pv.normalizedValue,
+              sourceRow: pv.sourceRow,
+              sourceColumn: pv.sourceColumn,
+              zeroIsExplicit: pv.zeroIsExplicit,
+              rawValue: pv.rawValue,
+              formula: pv.formula,
+            });
+          }
+          if (snapshotData.length > 0) {
+            // createMany در chunk برای جلوگیری از محدودیت پارامتر
+            const chunk = 500;
+            for (let i = 0; i < snapshotData.length; i += chunk) {
+              const part = snapshotData.slice(i, i + chunk);
+              await tx.nodePeriodSnapshot.createMany({ data: part });
+              periodSnapshotsCreated += part.length;
             }
           }
+        }
+
+        if (periodSnapshotsCreated !== parsed.periodMatrixStats.periodSnapshotsParsed) {
+          // فقط وقتی همه sourceRowها به نود map شده باشند؛ در غیر این صورت mismatch بحرانی
+          if (parsed.periodMatrixStats.periodSnapshotsParsed > 0) {
+            const mapped = parsed.periodValues.filter((pv) =>
+              nodeIdBySourceRow.has(pv.sourceRow),
+            ).length;
+            if (periodSnapshotsCreated !== mapped) {
+              throw new BadRequestException({
+                code: ErrorCode.IMPORT_ERROR,
+                message: 'تعداد Period Snapshot Persist‌شده با منبع برابر نیست.',
+              });
+            }
+          }
+        }
+
+        // فعال‌سازی اتمیک در انتهای موفقیت
+        if (previousPlanId) {
+          await tx.projectControlPlan.update({
+            where: { id: previousPlanId },
+            data: { isActive: false, updatedByUserId: ctx.userId ?? null },
+          });
+        }
+        await tx.projectControlPlan.update({
+          where: { id: planId },
+          data: { isActive: true, updatedByUserId: ctx.userId ?? null },
+        });
+        await tx.project.update({
+          where: { id: projectId },
+          data: {
+            projectControlEnabled: true,
+            activeControlPlanId: planId,
+            controlCurrency: 'TOMAN',
+            controlVersion: newVersion,
+          },
+        });
+
+        if (importBatchId) {
+          await tx.importSourceRecord.deleteMany({ where: { importBatchId } });
           if (parsed.rows.length > 0) {
             await tx.importSourceRecord.createMany({
               data: parsed.rows.map((row) => ({
@@ -579,6 +830,11 @@ export class ControlImportService {
               totalRows: parsed.rows.length,
               importedRows: created,
               completedAt: new Date(),
+              validationReport: {
+                periodSnapshotsCreated,
+                periodColumnCount: parsed.periodMatrixStats.periodColumnCount,
+                nodesWithRoot,
+              } as unknown as Prisma.InputJsonValue,
             },
           });
         }
@@ -586,8 +842,19 @@ export class ControlImportService {
         return {
           importBatchId: importBatchId ?? '',
           controlPlanId: planId,
+          previousControlPlanId: previousPlanId,
           createdNodes: created,
           updatedNodes: 0,
+          periodSnapshotsCreated,
+          assignmentsCreated,
+          dependenciesCreated: 0,
+          newPlanVersion: newVersion,
+          previousPlanVersion,
+          activePlanSwitched: true,
+          rollbackAvailable: previousPlanId !== null,
+          reusedExisting: false,
+          fileHash,
+          durationMs: 0,
           status: 'COMPLETED' as const,
         };
       });

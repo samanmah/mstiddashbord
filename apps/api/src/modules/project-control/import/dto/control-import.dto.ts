@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ControlImportSourceType } from '@ppm/contracts';
+import { ControlImportSourceType, ImportCommitMode } from '@ppm/contracts';
 import {
   IsArray,
   IsBoolean,
@@ -53,6 +53,16 @@ export class CommitImportDto {
   @IsOptional()
   @IsBoolean()
   allowWarnings?: boolean;
+
+  @ApiPropertyOptional({
+    enum: Object.values(ImportCommitMode),
+    description:
+      'CREATE_NEW_VERSION = ساخت Plan جدید؛ REUSE_EXISTING = استفاده از Commit قبلی با همان fileHash (پیش‌فرض امن).',
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(Object.values(ImportCommitMode))
+  mode?: ImportCommitMode;
 }
 
 export class UploadImportMetaDto {
